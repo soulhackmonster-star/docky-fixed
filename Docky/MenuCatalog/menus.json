@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "menus": [
+    {
+      "tileType": "app",
+      "items": [
+        { "type": "action", "action": "xcode.clean-build-folder" },
+        { "type": "divider" },
+        {
+          "type": "submenu",
+          "title": "Options",
+          "children": [
+            { "type": "action", "action": "app.toggle-pin" },
+            { "type": "action", "action": "app.show-in-finder" }
+          ]
+        },
+        {
+          "type": "divider",
+          "when": {
+            "all": [
+              { "flag": "isRunning" },
+              { "not": { "flag": "isFinder" } }
+            ]
+          }
+        },
+        { "type": "action", "action": "app.show-all-windows" },
+        {
+          "type": "action",
+          "action": "app.hide",
+          "alternateAction": "app.hide-others",
+          "alternateActionWhen": { "flag": "optionKey" }
+        },
+        { "type": "action", "action": "app.quit" },
+        { "type": "action", "action": "app.open" }
+      ]
+    },
+    {
+      "tileType": "folder",
+      "items": [
+        { "type": "action", "action": "folder.open-in-finder" },
+        { "type": "action", "action": "folder.reveal-in-finder" }
+      ]
+    },
+    {
+      "tileType": "trash",
+      "items": [
+        { "type": "action", "action": "trash.open" },
+        { "type": "divider" },
+        { "type": "action", "action": "trash.empty" }
+      ]
+    }
+  ]
+}

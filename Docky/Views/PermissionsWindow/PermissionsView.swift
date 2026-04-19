@@ -93,6 +93,7 @@ struct PermissionsView: View {
         switch grantMethod {
         case .fullDiskAccess: return "Full Disk Access"
         case .automation: return "Automation"
+        case .accessibility: return "Accessibility"
         case .none: return nil
         }
     }
@@ -114,6 +115,8 @@ struct PermissionsView: View {
             return service.userFoldersGrantMethod
         case .finderAutomation:
             return service.finderAutomationGrantMethod
+        case .accessibility:
+            return service.accessibilityGrantMethod
         }
     }
 
@@ -123,6 +126,8 @@ struct PermissionsView: View {
             return "Open System Settings (Automation)"
         case .userFolders:
             return "Open System Settings (Full Disk Access)"
+        case .accessibility:
+            return "Open System Settings (Accessibility)"
         }
     }
 

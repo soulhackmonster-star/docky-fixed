@@ -22,6 +22,15 @@ struct TileView: View {
     private static let finderBundleIdentifier = "com.apple.finder"
 
     private func contextActions(modifierFlags: NSEvent.ModifierFlags) -> [ContextAction] {
+        if let catalogActions = MenuCatalogService.shared.contextActions(for: tile, modifierFlags: modifierFlags) {
+            switch tile.content {
+            case .app, .folder, .trash:
+                return catalogActions
+            case .widget, .spacer, .divider:
+                break
+            }
+        }
+
         switch tile.content {
         case .app(let app):
             return appContextActions(for: app, modifierFlags: modifierFlags)

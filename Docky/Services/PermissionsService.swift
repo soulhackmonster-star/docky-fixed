@@ -12,6 +12,7 @@
 //
 
 import AppKit
+import ApplicationServices
 import Combine
 
 enum PermissionStatus {
@@ -23,11 +24,13 @@ enum PermissionStatus {
 enum GrantMethod {
     case fullDiskAccess
     case automation
+    case accessibility
 }
 
 enum Permission: String, CaseIterable, Identifiable {
     case userFolders
     case finderAutomation
+    case accessibility
 
     var id: String { rawValue }
 
@@ -35,6 +38,7 @@ enum Permission: String, CaseIterable, Identifiable {
         switch self {
         case .userFolders: return "Full Disk Access"
         case .finderAutomation: return "Finder Automation"
+        case .accessibility: return "Accessibility"
         }
     }
 
@@ -44,6 +48,8 @@ enum Permission: String, CaseIterable, Identifiable {
             return "Grant Full Disk Access so Docky can preview recent items from folders pinned to the Dock, including protected locations like Downloads, Documents, and Desktop. No data leaves your Mac."
         case .finderAutomation:
             return "Docky can ask Finder to reveal files, open folders in Finder, open the Trash, and empty the Trash. macOS controls this separately from file access, and you can grant or revoke it at any time in Privacy & Security."
+        case .accessibility:
+            return "Accessibility access lets Docky click menu bar items for curated menuClick actions. These actions are slower and more fragile than built-in actions, so Docky requests this only when needed."
         }
     }
 
@@ -53,6 +59,8 @@ enum Permission: String, CaseIterable, Identifiable {
             return URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
         case .finderAutomation:
             return URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")
+        case .accessibility:
+            return URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
         }
     }
 
@@ -61,6 +69,8 @@ enum Permission: String, CaseIterable, Identifiable {
         case .userFolders:
             return true
         case .finderAutomation:
+            return false
+        case .accessibility:
             return false
         }
     }
@@ -74,6 +84,9 @@ final class PermissionsService: ObservableObject {
 
     @Published private(set) var finderAutomation: PermissionStatus = .notDetermined
     @Published private(set) var finderAutomationGrantMethod: GrantMethod?
+
+    @Published private(set) var accessibility: PermissionStatus = .notDetermined
+    @Published private(set) var accessibilityGrantMethod: GrantMethod?
 
     private let dockBookmarkKey = "docky.dockPlistBookmark"
     private let userFoldersBookmarkKey = "docky.userFoldersBookmark"
@@ -90,6 +103,7 @@ final class PermissionsService: ObservableObject {
         switch permission {
         case .userFolders: return userFolders
         case .finderAutomation: return finderAutomation
+        case .accessibility: return accessibility
         }
     }
 
@@ -120,6 +134,7 @@ final class PermissionsService: ObservableObject {
         let fdaGranted = checkFullDiskAccess()
         refreshUserFolders(fdaGranted: fdaGranted)
         refreshFinderAutomation()
+        refreshAccessibility()
     }
 
     // MARK: - Grant actions
@@ -133,6 +148,8 @@ final class PermissionsService: ObservableObject {
         switch permission {
         case .finderAutomation:
             return await AppleScriptService.shared.requestFinderAutomationPermission()
+        case .accessibility:
+            return requestAccessibilityPermission(prompt: true)
         case .userFolders:
             return false
         }
@@ -142,6 +159,25 @@ final class PermissionsService: ObservableObject {
         guard permission == .finderAutomation else { return }
         UserDefaults.standard.removeObject(forKey: finderAutomationStatusKey)
         refreshFinderAutomation()
+    }
+
+    @discardableResult
+    func requestAccessibilityPermission(prompt: Bool) -> Bool {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: prompt] as CFDictionary
+        let granted = AXIsProcessTrustedWithOptions(options)
+        refreshAccessibility()
+        return granted
+    }
+
+    func presentPermissionAlert(for permission: Permission, actionTitle: String) {
+        let alert = NSAlert()
+        alert.messageText = permission.title + " is required"
+        alert.informativeText = "Allow Docky in Privacy & Security so it can perform \(actionTitle.lowercased())."
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn {
+            openSystemSettings(for: permission)
+        }
     }
 
     // MARK: - User folders permission
@@ -185,6 +221,12 @@ final class PermissionsService: ObservableObject {
             finderAutomation = .notDetermined
             finderAutomationGrantMethod = nil
         }
+    }
+
+    private func refreshAccessibility() {
+        let granted = AXIsProcessTrusted()
+        accessibility = granted ? .granted : .denied
+        accessibilityGrantMethod = granted ? .accessibility : nil
     }
 
     // MARK: - Full Disk Access probe

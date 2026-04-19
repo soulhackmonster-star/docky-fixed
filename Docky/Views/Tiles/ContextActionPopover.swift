@@ -7,7 +7,7 @@ import AppKit
 import SwiftUI
 
 struct ContextAction: Identifiable {
-    enum Kind {
+    enum Kind: Equatable {
         case action
         case submenu
         case divider

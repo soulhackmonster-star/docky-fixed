@@ -48,6 +48,11 @@ private final class SettingsTabViewController: NSTabViewController {
             imageName: "lock.shield",
             view: PermissionsSettingsView()
         ))
+        addTabViewItem(makeTab(
+            label: "Actions",
+            imageName: "list.bullet.rectangle",
+            view: ActionCatalogSettingsView()
+        ))
     }
 
     private func makeTab(label: String, imageName: String, view: some View) -> NSTabViewItem {

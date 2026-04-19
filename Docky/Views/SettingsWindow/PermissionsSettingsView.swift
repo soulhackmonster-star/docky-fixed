@@ -12,6 +12,7 @@ struct PermissionsSettingsView: View {
         Form {
             permissionSection(for: .userFolders)
             permissionSection(for: .finderAutomation)
+            permissionSection(for: .accessibility)
 
             Section {
                 Button("Re-check Permissions") {
@@ -46,7 +47,7 @@ struct PermissionsSettingsView: View {
                     service.openSystemSettings(for: permission)
                 }
 
-                if permission == .finderAutomation {
+                if permission == .finderAutomation || permission == .accessibility {
                     requestButton(for: permission)
                 }
 
@@ -61,7 +62,7 @@ struct PermissionsSettingsView: View {
 
     @ViewBuilder
     private func requestButton(for permission: Permission) -> some View {
-        if permission == .finderAutomation {
+        if permission == .finderAutomation || permission == .accessibility {
             Button(buttonTitle(for: permission)) {
                 Task {
                     _ = await service.requestAutomationPermission(for: permission)
@@ -90,6 +91,7 @@ struct PermissionsSettingsView: View {
         switch grantMethod(for: permission) {
         case .fullDiskAccess: return "Full Disk Access"
         case .automation: return "Automation"
+        case .accessibility: return "Accessibility"
         case .none: return nil
         }
     }
@@ -100,6 +102,8 @@ struct PermissionsSettingsView: View {
             return service.userFoldersGrantMethod
         case .finderAutomation:
             return service.finderAutomationGrantMethod
+        case .accessibility:
+            return service.accessibilityGrantMethod
         }
     }
 
@@ -107,6 +111,7 @@ struct PermissionsSettingsView: View {
         switch permission {
         case .userFolders: return "Open System Settings"
         case .finderAutomation: return "Request Finder Access"
+        case .accessibility: return "Request Accessibility Access"
         }
     }
 }

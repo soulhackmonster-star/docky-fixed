@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "packages": [
+    {
+      "id": "docky.core",
+      "title": "Docky Core Actions",
+      "author": "Docky",
+      "version": "1.0.0",
+      "reviewStatus": "curated",
+      "description": "Built-in Docky actions and reviewed scripted extensions.",
+      "actions": [
+        {
+          "id": "app.open",
+          "title": "Open",
+          "kind": "builtin",
+          "builtinIdentifier": "openApp",
+          "tileTypes": ["app"],
+          "permissions": [],
+          "inputs": [],
+          "destructive": false,
+          "requiresFrontmost": false,
+          "holdOption": false,
+          "when": {
+            "not": { "flag": "isRunning" }
+          }
+        },
+        {
+          "id": "app.show-all-windows",
+          "title": "Show All Windows",
+          "kind": "builtin",
+          "builtinIdentifier": "showAllWindows",
+          "tileTypes": ["app"],
+          "permissions": [],
+          "inputs": [],
+          "destructive": false,
+          "requiresFrontmost": false,
+          "holdOption": false,
+          "when": { "flag": "isRunning" }
+        },
+        {
+          "id": "app.toggle-pin",
+          "title": "Keep in Dock",
+          "kind": "builtin",
+          "builtinIdentifier": "togglePinnedApp",
+          "tileTypes": ["app"],
+          "permissions": [],
+          "inputs": [],
+          "destructive": false,
+          "toggleFlag": "isPinned",
+          "requiresFrontmost": false,
+          "holdOption": false,
+          "when": { "flag": "canTogglePin" }
+        },
+        {
+          "id": "app.show-in-finder",
+          "title": "Show in Finder",
+          "kind": "builtin",
+          "builtinIdentifier": "showAppInFinder",
+          "tileTypes": ["app"],
+          "permissions": [],
+          "inputs": [],
+          "destructive": false,
+          "requiresFrontmost": false,
+          "holdOption": false
+        },
+        {
+          "id": "app.hide",
+          "title": "Hide",
+          "kind": "builtin",
+          "builtinIdentifier": "hideApp",
+          "tileTypes": ["app"],
+          "permissions": [],
+          "inputs": [],
+          "destructive": false,
+          "requiresFrontmost": false,
+          "holdOption": false,
+          "when": {
+            "all": [
+              { "flag": "isRunning" },
+              { "not": { "flag": "isFinder" } }
+            ]
+          }
+        },
+        {
+          "id": "app.hide-others",
+          "title": "Hide Others",
+          "kind": "applescript",
+          "tileTypes": ["app"],
+          "targetApp": "com.apple.systemevents",
+          "permissions": ["accessibility"],
+          "inputs": ["bundleIdentifier"],
+          "script": "tell application id \"com.apple.systemevents\"\n    set visible of every application process whose bundle identifier is not \"{{bundleIdentifier}}\" to false\nend tell",
+          "destructive": false,
+          "requiresFrontmost": false,
+          "holdOption": false,
+          "when": {
+            "all": [
+              { "flag": "isRunning" },
+              { "not": { "flag": "isFinder" } }
+            ]
+          }
+        },
+        {
+          "id": "app.quit",
+          "title": "Quit",
+          "alternateTitle": "Force Quit",
+          "alternateTitleWhen": { "flag": "optionKey" },
+          "kind": "builtin",
+          "builtinIdentifier": "quitApp",
+          "tileTypes": ["app"],
+          "permissions": [],
+          "inputs": [],
+          "destructive": false,
+          "destructiveWhen": { "flag": "optionKey" },
+          "requiresFrontmost": false,
+          "holdOption": false,
+          "when": {
+            "all": [
+              { "flag": "isRunning" },
+              { "not": { "flag": "isFinder" } }
+            ]
+          }
+        },
+        {
+          "id": "folder.open-in-finder",
+          "title": "Open in Finder",
+          "kind": "builtin",
+          "builtinIdentifier": "openFolderInFinder",
+          "tileTypes": ["folder"],
+          "permissions": ["finderAutomation"],
+          "inputs": [],
+          "destructive": false,
+          "requiresFrontmost": false,
+          "holdOption": false
+        },
+        {
+          "id": "folder.reveal-in-finder",
+          "title": "Reveal in Finder",
+          "kind": "builtin",
+          "builtinIdentifier": "revealFolderInFinder",
+          "tileTypes": ["folder"],
+          "permissions": ["finderAutomation"],
+          "inputs": [],
+          "destructive": false,
+          "requiresFrontmost": false,
+          "holdOption": false
+        },
+        {
+          "id": "trash.open",
+          "title": "Open Trash",
+          "kind": "builtin",
+          "builtinIdentifier": "openTrash",
+          "tileTypes": ["trash"],
+          "permissions": ["finderAutomation"],
+          "inputs": [],
+          "destructive": false,
+          "requiresFrontmost": false,
+          "holdOption": false
+        },
+        {
+          "id": "trash.empty",
+          "title": "Empty Trash",
+          "kind": "builtin",
+          "builtinIdentifier": "emptyTrash",
+          "tileTypes": ["trash"],
+          "permissions": ["finderAutomation"],
+          "inputs": [],
+          "destructive": true,
+          "requiresFrontmost": false,
+          "holdOption": false
+        },
+        {
+          "id": "xcode.clean-build-folder",
+          "title": "Clean Build Folder",
+          "kind": "menuClick",
+          "tileTypes": ["app"],
+          "targetApp": "com.apple.dt.Xcode",
+          "permissions": ["accessibility"],
+          "inputs": [],
+          "path": ["Product", "Clean Build Folder"],
+          "destructive": false,
+          "requiresFrontmost": true,
+          "holdOption": false,
+          "when": { "bundleIdentifierEquals": "com.apple.dt.Xcode" }
+        }
+      ]
+    }
+  ]
+}
