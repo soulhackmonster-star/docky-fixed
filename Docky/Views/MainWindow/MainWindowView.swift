@@ -37,8 +37,9 @@ final class MainWindowView: NSView {
         guard let layer else { return }
 
         let cornerRadius = effectiveCornerRadius
+        let materialTint = NSColor.windowBackgroundColor.blended(withFraction: 0.18, of: .black) ?? .windowBackgroundColor
 
-        layer.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.2).cgColor
+        layer.backgroundColor = materialTint.withAlphaComponent(0.22).cgColor
         layer.cornerCurve = .continuous
         layer.cornerRadius = cornerRadius
         updateBorderLayer(cornerRadius: cornerRadius)
