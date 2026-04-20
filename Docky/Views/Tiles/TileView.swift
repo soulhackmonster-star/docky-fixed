@@ -121,9 +121,32 @@ struct TileView: View {
     private var runningIndicator: some View {
         if case .app(let app) = tile.content,
            workspace.isRunning(bundleIdentifier: app.bundleIdentifier) {
-            Circle()
-                .frame(width: 4, height: 4)
+            runningIndicatorShape
+                .frame(width: runningIndicatorSize.width, height: runningIndicatorSize.height)
                 .foregroundStyle(.primary.opacity(0.9))
+        }
+    }
+
+    @ViewBuilder
+    private var runningIndicatorShape: some View {
+        switch preferences.activeIndicatorShape {
+        case .dot:
+            Circle()
+        case .pill:
+            Capsule()
+        }
+    }
+
+    private var runningIndicatorSize: CGSize {
+        switch preferences.activeIndicatorShape {
+        case .dot:
+            CGSize(width: 4, height: 4)
+        case .pill:
+            if position.isVertical {
+                CGSize(width: 4, height: 12)
+            } else {
+                CGSize(width: 12, height: 4)
+            }
         }
     }
 

@@ -40,6 +40,23 @@ struct GeneralSettingsView: View {
                 .padding(.vertical, 4)
 
                 VStack(alignment: .leading, spacing: 8) {
+                    Text("Active Indicator Shape")
+                        .font(.headline)
+
+                    Picker("Active Indicator Shape", selection: $preferences.activeIndicatorShape) {
+                        ForEach(DockTileIndicatorShape.allCases) { shape in
+                            Text(shape.title).tag(shape)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Text("Choose whether running apps are marked with the classic dot or a pill.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 4)
+
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Tile Vertical Padding")
                         .font(.headline)
 
