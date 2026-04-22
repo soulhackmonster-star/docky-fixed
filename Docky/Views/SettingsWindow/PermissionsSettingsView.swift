@@ -13,6 +13,7 @@ struct PermissionsSettingsView: View {
             permissionSection(for: .userFolders)
             permissionSection(for: .finderAutomation)
             permissionSection(for: .accessibility)
+            permissionSection(for: .screenCapture)
 
             Section {
                 Button("Re-check Permissions") {
@@ -47,7 +48,7 @@ struct PermissionsSettingsView: View {
                     service.openSystemSettings(for: permission)
                 }
 
-                if permission == .finderAutomation || permission == .accessibility {
+                if permission == .finderAutomation || permission == .accessibility || permission == .screenCapture {
                     requestButton(for: permission)
                 }
 
@@ -62,10 +63,10 @@ struct PermissionsSettingsView: View {
 
     @ViewBuilder
     private func requestButton(for permission: Permission) -> some View {
-        if permission == .finderAutomation || permission == .accessibility {
+        if permission == .finderAutomation || permission == .accessibility || permission == .screenCapture {
             Button(buttonTitle(for: permission)) {
                 Task {
-                    _ = await service.requestAutomationPermission(for: permission)
+                    _ = await service.requestPermission(for: permission)
                 }
             }
         }
@@ -92,6 +93,7 @@ struct PermissionsSettingsView: View {
         case .fullDiskAccess: return "Full Disk Access"
         case .automation: return "Automation"
         case .accessibility: return "Accessibility"
+        case .screenCapture: return "Screen Recording"
         case .none: return nil
         }
     }
@@ -104,6 +106,8 @@ struct PermissionsSettingsView: View {
             return service.finderAutomationGrantMethod
         case .accessibility:
             return service.accessibilityGrantMethod
+        case .screenCapture:
+            return service.screenCaptureGrantMethod
         }
     }
 
@@ -112,6 +116,7 @@ struct PermissionsSettingsView: View {
         case .userFolders: return "Open System Settings"
         case .finderAutomation: return "Request Finder Access"
         case .accessibility: return "Request Accessibility Access"
+        case .screenCapture: return "Request Screen Recording Access"
         }
     }
 }

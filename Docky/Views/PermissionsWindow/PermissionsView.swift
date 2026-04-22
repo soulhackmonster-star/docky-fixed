@@ -30,7 +30,7 @@ struct PermissionsView: View {
         .onAppear { service.refresh() }
         .task(id: currentIndex) {
             guard step == .finderAutomation, status == .notDetermined else { return }
-            _ = await service.requestAutomationPermission(for: step)
+            _ = await service.requestPermission(for: step)
         }
     }
 
@@ -77,7 +77,7 @@ struct PermissionsView: View {
             Button(systemSettingsButtonTitle) {
                 service.openSystemSettings(for: step)
             }
-            if step == .finderAutomation {
+            if step == .finderAutomation || step == .screenCapture {
                 requestButton
             }
         }
@@ -87,7 +87,7 @@ struct PermissionsView: View {
         switch step {
         case .userFolders, .accessibility:
             true
-        case .finderAutomation:
+        case .finderAutomation, .screenCapture:
             false
         }
     }
@@ -152,16 +152,17 @@ struct PermissionsView: View {
         case .fullDiskAccess: return "Full Disk Access"
         case .automation: return "Automation"
         case .accessibility: return "Accessibility"
+        case .screenCapture: return "Screen Recording"
         case .none: return nil
         }
     }
 
     @ViewBuilder
     private var requestButton: some View {
-        if step == .finderAutomation {
-            Button("Request Finder Access") {
+        if step == .finderAutomation || step == .screenCapture {
+            Button(requestButtonTitle) {
                 Task {
-                    _ = await service.requestAutomationPermission(for: step)
+                    _ = await service.requestPermission(for: step)
                 }
             }
         }
@@ -175,6 +176,8 @@ struct PermissionsView: View {
             return service.finderAutomationGrantMethod
         case .accessibility:
             return service.accessibilityGrantMethod
+        case .screenCapture:
+            return service.screenCaptureGrantMethod
         }
     }
 
@@ -186,6 +189,19 @@ struct PermissionsView: View {
             return "Open System Settings (Full Disk Access)"
         case .accessibility:
             return "Open System Settings (Accessibility)"
+        case .screenCapture:
+            return "Open System Settings (Screen Recording)"
+        }
+    }
+
+    private var requestButtonTitle: String {
+        switch step {
+        case .finderAutomation:
+            return "Request Finder Access"
+        case .screenCapture:
+            return "Request Screen Recording Access"
+        case .userFolders, .accessibility:
+            return "Request Access"
         }
     }
 

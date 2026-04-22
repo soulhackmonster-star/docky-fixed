@@ -36,8 +36,10 @@ struct MinimizedWindowTile: Equatable {
     let windowIdentifier: String
     let windowNumber: Int?
     let bundleIdentifier: String
+    let processIdentifier: pid_t
     let appDisplayName: String
     let windowTitle: String
+    let previewLookupIndex: Int
 }
 
 struct AppFolderTile: Equatable {

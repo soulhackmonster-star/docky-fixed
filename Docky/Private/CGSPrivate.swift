@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import CoreGraphics
 
 typealias CGSConnectionID = Int
 
@@ -18,3 +19,11 @@ func CGSSetWindowBackgroundBlurRadius(
     _ windowID: Int,
     _ radius: Int
 ) -> Int32
+
+@_silgen_name("CGWindowListCreateImage")
+func CGWindowListCreateImagePrivate(
+    _ screenBounds: CGRect,
+    _ listOption: CGWindowListOption,
+    _ windowID: CGWindowID,
+    _ imageOption: CGWindowImageOption
+) -> CGImage?

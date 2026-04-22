@@ -8,21 +8,47 @@ import SwiftUI
 
 struct MinimizedWindowTileView: View {
     let tile: MinimizedWindowTile
+    @ObservedObject private var workspace = WorkspaceService.shared
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            Image(nsImage: IconCacheService.shared.icon(forBundleIdentifier: tile.bundleIdentifier))
-                .resizable()
-                .interpolation(.high)
-                .aspectRatio(contentMode: .fit)
+        GeometryReader { geo in
+            ZStack {
+                previewCard(in: geo.size)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
 
-            Image(systemName: "rectangle.inset.filled.and.person.filled")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.primary)
-                .padding(3)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .offset(x: 1, y: 1)
+                Image(nsImage: IconCacheService.shared.icon(forBundleIdentifier: tile.bundleIdentifier))
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: geo.size.width * 0.32, height: geo.size.width * 0.32)
+                    .padding(5)
+                    .shadow(color: .black.opacity(0.18), radius: 4, y: 1)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .offset(x: 2, y: 2)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private func previewCard(in size: CGSize) -> some View {
+        let cardSize = CGSize(width: size.width, height: size.height * 0.8)
+        let cornerRadius = min(cardSize.width, cardSize.height) * 0.06
+
+        ZStack {
+            if let preview = workspace.minimizedWindowPreview(for: tile) {
+                Image(nsImage: preview)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .clipShape(.rect(cornerRadius: cornerRadius, style: .continuous))
+                    .frame(width: cardSize.width, height: cardSize.height)
+            } else {
+                Image(systemName: "rectangle.inset.filled")
+                    .font(.system(size: cardSize.height * 0.42, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+        }
+        .frame(width: cardSize.width, height: cardSize.height)
     }
 }

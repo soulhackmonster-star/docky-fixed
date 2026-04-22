@@ -5,6 +5,8 @@
 //  Tracks the remaining macOS permissions Docky needs:
 //    - .userFolders       → Full Disk Access for pinned folder previews
 //    - .finderAutomation  → Finder Apple Events for Finder-backed actions
+//    - .accessibility     → inspect and restore minimized windows
+//    - .screenCapture     → minimized window previews
 //
 //  Required file-system access is granted through Full Disk Access (FDA),
 //  probed via an attempted read of a TCC-protected directory
@@ -25,12 +27,14 @@ enum GrantMethod {
     case fullDiskAccess
     case automation
     case accessibility
+    case screenCapture
 }
 
 enum Permission: String, CaseIterable, Identifiable {
     case userFolders
     case finderAutomation
     case accessibility
+    case screenCapture
 
     var id: String { rawValue }
 
@@ -39,6 +43,7 @@ enum Permission: String, CaseIterable, Identifiable {
         case .userFolders: return "Full Disk Access"
         case .finderAutomation: return "Finder Automation"
         case .accessibility: return "Accessibility"
+        case .screenCapture: return "Screen Recording"
         }
     }
 
@@ -49,7 +54,9 @@ enum Permission: String, CaseIterable, Identifiable {
         case .finderAutomation:
             return "Docky can ask Finder to reveal files, open folders in Finder, open the Trash, and empty the Trash. macOS controls this separately from file access, and you can grant or revoke it at any time in Privacy & Security."
         case .accessibility:
-            return "Accessibility access lets Docky click menu bar items for curated menuClick actions and inspect minimized windows so it can show and restore them beside the Trash. These actions are slower and more fragile than built-in actions, so Docky requests this only when needed."
+            return "Accessibility access lets Docky click menu bar items for curated menuClick actions and inspect minimized windows so it can restore them beside the Trash. These actions are slower and more fragile than built-in actions, so Docky requests this only when needed."
+        case .screenCapture:
+            return "Grant Screen Recording so Docky can show thumbnail previews for minimized windows. Docky only captures the minimized window itself for its dock tile, and nothing leaves your Mac. macOS may require quitting and reopening Docky after you allow this."
         }
     }
 
@@ -61,6 +68,8 @@ enum Permission: String, CaseIterable, Identifiable {
             return URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")
         case .accessibility:
             return URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+        case .screenCapture:
+            return URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
         }
     }
 
@@ -71,6 +80,8 @@ enum Permission: String, CaseIterable, Identifiable {
         case .finderAutomation:
             return false
         case .accessibility:
+            return true
+        case .screenCapture:
             return true
         }
     }
@@ -88,6 +99,9 @@ final class PermissionsService: ObservableObject {
     @Published private(set) var accessibility: PermissionStatus = .notDetermined
     @Published private(set) var accessibilityGrantMethod: GrantMethod?
 
+    @Published private(set) var screenCapture: PermissionStatus = .notDetermined
+    @Published private(set) var screenCaptureGrantMethod: GrantMethod?
+
     private let dockBookmarkKey = "docky.dockPlistBookmark"
     private let userFoldersBookmarkKey = "docky.userFoldersBookmark"
     private let finderAutomationStatusKey = "docky.finderAutomationStatus"
@@ -104,6 +118,7 @@ final class PermissionsService: ObservableObject {
         case .userFolders: return userFolders
         case .finderAutomation: return finderAutomation
         case .accessibility: return accessibility
+        case .screenCapture: return screenCapture
         }
     }
 
@@ -135,6 +150,7 @@ final class PermissionsService: ObservableObject {
         refreshUserFolders(fdaGranted: fdaGranted)
         refreshFinderAutomation()
         refreshAccessibility()
+        refreshScreenCapture()
     }
 
     // MARK: - Grant actions
@@ -144,12 +160,14 @@ final class PermissionsService: ObservableObject {
         NSWorkspace.shared.open(url)
     }
 
-    func requestAutomationPermission(for permission: Permission) async -> Bool {
+    func requestPermission(for permission: Permission) async -> Bool {
         switch permission {
         case .finderAutomation:
             return await AppleScriptService.shared.requestFinderAutomationPermission()
         case .accessibility:
             return requestAccessibilityPermission(prompt: true)
+        case .screenCapture:
+            return requestScreenCapturePermission()
         case .userFolders:
             return false
         }
@@ -166,6 +184,13 @@ final class PermissionsService: ObservableObject {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: prompt] as CFDictionary
         let granted = AXIsProcessTrustedWithOptions(options)
         refreshAccessibility()
+        return granted
+    }
+
+    @discardableResult
+    func requestScreenCapturePermission() -> Bool {
+        let granted = CGRequestScreenCaptureAccess()
+        refreshScreenCapture()
         return granted
     }
 
@@ -227,6 +252,12 @@ final class PermissionsService: ObservableObject {
         let granted = AXIsProcessTrusted()
         accessibility = granted ? .granted : .denied
         accessibilityGrantMethod = granted ? .accessibility : nil
+    }
+
+    private func refreshScreenCapture() {
+        let granted = CGPreflightScreenCaptureAccess()
+        screenCapture = granted ? .granted : .denied
+        screenCaptureGrantMethod = granted ? .screenCapture : nil
     }
 
     // MARK: - Full Disk Access probe

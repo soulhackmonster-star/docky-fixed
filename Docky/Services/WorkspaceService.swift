@@ -14,12 +14,14 @@
 import AppKit
 import ApplicationServices
 import Combine
+import ScreenCaptureKit
 
 private let axWindowNumberAttribute = "AXWindowNumber" as CFString
 
 struct RunningApp: Hashable, Identifiable {
     let bundleIdentifier: String
     let localizedName: String
+    let processIdentifier: pid_t
     let bundleURL: URL?
     let launchDate: Date?
     let isHidden: Bool
@@ -34,6 +36,7 @@ final class WorkspaceService: ObservableObject {
     /// newly-launched apps append. Terminated apps are removed in place.
     @Published private(set) var runningApps: [RunningApp] = []
     @Published private(set) var minimizedWindows: [MinimizedWindowTile] = []
+    @Published private(set) var minimizedWindowPreviews: [String: NSImage] = [:]
 
     private var runningByBundleID: [String: RunningApp] = [:]
 
@@ -42,6 +45,7 @@ final class WorkspaceService: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private var cancellables: Set<AnyCancellable> = []
     private var lastMinimizedWindowsDebugSummary: String?
+    private var attemptedMinimizedWindowPreviewIDs: Set<String> = []
 
     private init() {
         refresh()
@@ -63,6 +67,10 @@ final class WorkspaceService: ObservableObject {
 
     func isHidden(bundleIdentifier: String) -> Bool {
         runningByBundleID[bundleIdentifier]?.isHidden == true
+    }
+
+    func minimizedWindowPreview(for window: MinimizedWindowTile) -> NSImage? {
+        minimizedWindowPreviews[window.windowIdentifier]
     }
 
     func activateOrOpen(bundleIdentifier: String) {
@@ -161,6 +169,7 @@ final class WorkspaceService: ObservableObject {
             newMap[bundleID] = RunningApp(
                 bundleIdentifier: bundleID,
                 localizedName: app.localizedName ?? bundleID,
+                processIdentifier: app.processIdentifier,
                 bundleURL: app.bundleURL,
                 launchDate: app.launchDate,
                 isHidden: app.isHidden
@@ -177,7 +186,7 @@ final class WorkspaceService: ObservableObject {
     /// Oldest → newest. Apps without a launchDate (rare; system apps launched
     /// before our process) are treated as oldest. Bundle identifier is used
     /// as a deterministic tiebreaker.
-    private static func byLaunchDate(_ lhs: RunningApp, _ rhs: RunningApp) -> Bool {
+    nonisolated private static func byLaunchDate(_ lhs: RunningApp, _ rhs: RunningApp) -> Bool {
         switch (lhs.launchDate, rhs.launchDate) {
         case let (l?, r?):
             return l == r
@@ -233,6 +242,10 @@ final class WorkspaceService: ObservableObject {
             if !minimizedWindows.isEmpty {
                 minimizedWindows = []
             }
+            if !minimizedWindowPreviews.isEmpty {
+                minimizedWindowPreviews = [:]
+            }
+            attemptedMinimizedWindowPreviewIDs = []
             return
         }
 
@@ -261,6 +274,43 @@ final class WorkspaceService: ObservableObject {
 
         if orderedWindows != minimizedWindows {
             minimizedWindows = orderedWindows
+        }
+
+        refreshMinimizedWindowPreviews(for: currentWindows)
+    }
+
+    private func refreshMinimizedWindowPreviews(for windows: [MinimizedWindowTile]) {
+        guard PermissionsService.shared.screenCapture == .granted else {
+            if !minimizedWindowPreviews.isEmpty {
+                minimizedWindowPreviews = [:]
+            }
+            attemptedMinimizedWindowPreviewIDs = []
+            return
+        }
+
+        let activeWindowIdentifiers = Set(windows.map(\.windowIdentifier))
+        var updatedPreviews = minimizedWindowPreviews
+        var didChange = false
+
+        for windowIdentifier in updatedPreviews.keys where !activeWindowIdentifiers.contains(windowIdentifier) {
+            updatedPreviews.removeValue(forKey: windowIdentifier)
+            didChange = true
+        }
+
+        attemptedMinimizedWindowPreviewIDs = attemptedMinimizedWindowPreviewIDs.intersection(activeWindowIdentifiers)
+
+        for window in windows {
+            guard updatedPreviews[window.windowIdentifier] == nil,
+                  !attemptedMinimizedWindowPreviewIDs.contains(window.windowIdentifier) else {
+                continue
+            }
+
+            attemptedMinimizedWindowPreviewIDs.insert(window.windowIdentifier)
+            captureMinimizedWindowPreviewIfNeeded(for: window)
+        }
+
+        if didChange {
+            minimizedWindowPreviews = updatedPreviews
         }
     }
 
@@ -309,8 +359,10 @@ final class WorkspaceService: ObservableObject {
                 ?? "\(runningApp.bundleIdentifier):\(fallbackToken)",
             windowNumber: windowNumber,
             bundleIdentifier: runningApp.bundleIdentifier,
+            processIdentifier: runningApp.processIdentifier,
             appDisplayName: runningApp.localizedName,
-            windowTitle: title.isEmpty ? runningApp.localizedName : title
+            windowTitle: title.isEmpty ? runningApp.localizedName : title,
+            previewLookupIndex: fallbackIndex
         )
     }
 
@@ -349,6 +401,185 @@ final class WorkspaceService: ObservableObject {
             return nil
         }
         return value
+    }
+
+    private func captureMinimizedWindowPreviewIfNeeded(for window: MinimizedWindowTile) {
+        Task { [weak self] in
+            guard let self,
+                  let preview = await self.captureMinimizedWindowPreview(for: window) else {
+                return
+            }
+
+            guard self.minimizedWindows.contains(where: { $0.windowIdentifier == window.windowIdentifier }),
+                  self.minimizedWindowPreviews[window.windowIdentifier] == nil else {
+                return
+            }
+
+            var updatedPreviews = self.minimizedWindowPreviews
+            updatedPreviews[window.windowIdentifier] = preview
+            self.minimizedWindowPreviews = updatedPreviews
+        }
+    }
+
+    private func captureMinimizedWindowPreview(for window: MinimizedWindowTile) async -> NSImage? {
+        guard PermissionsService.shared.screenCapture == .granted else {
+            return nil
+        }
+
+        do {
+            let shareableContent = try await shareableContentIncludingOffscreenWindows()
+            guard let shareableWindow = matchingShareableWindow(for: window, in: shareableContent.windows) else {
+                NSLog(
+                    "[Docky] Minimized window preview: no shareable window for \(window.windowIdentifier) title=\(window.windowTitle) totalShareableWindows=\(shareableContent.windows.count)"
+                )
+                return nil
+            }
+
+            if let cgImage = CGWindowListCreateImagePrivate(
+                .null,
+                [.optionIncludingWindow],
+                shareableWindow.windowID,
+                [.boundsIgnoreFraming, .bestResolution]
+            ) {
+                return makeThumbnail(from: cgImage, maxSize: CGSize(width: 320, height: 200))
+            }
+
+            let configuration = SCStreamConfiguration()
+            let captureSize = constrainedCaptureSize(for: shareableWindow.frame.size)
+            configuration.width = Int(captureSize.width)
+            configuration.height = Int(captureSize.height)
+            configuration.capturesAudio = false
+            configuration.captureMicrophone = false
+            configuration.showsCursor = false
+            configuration.scalesToFit = true
+            configuration.ignoreShadowsSingleWindow = true
+            configuration.ignoreGlobalClipSingleWindow = true
+
+            let filter = SCContentFilter(desktopIndependentWindow: shareableWindow)
+            let cgImage = try await captureImage(contentFilter: filter, configuration: configuration)
+            return makeThumbnail(from: cgImage, maxSize: CGSize(width: 320, height: 200))
+        } catch {
+            NSLog("[Docky] Minimized window preview capture failed for \(window.windowIdentifier): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func matchingShareableWindow(for window: MinimizedWindowTile, in windows: [SCWindow]) -> SCWindow? {
+        if let windowNumber = window.windowNumber,
+           let exactMatch = windows.first(where: { Int($0.windowID) == windowNumber }) {
+            return exactMatch
+        }
+
+        let appWindows = windows.filter { shareableWindow in
+            guard let owningApplication = shareableWindow.owningApplication else {
+                return false
+            }
+
+            return owningApplication.processID == window.processIdentifier
+                || owningApplication.bundleIdentifier == window.bundleIdentifier
+        }
+
+        let titledWindows = appWindows.filter { shareableWindow in
+            normalizedWindowTitle(shareableWindow.title) == normalizedWindowTitle(window.windowTitle)
+        }
+
+        if titledWindows.indices.contains(window.previewLookupIndex) {
+            return titledWindows[window.previewLookupIndex]
+        }
+
+        if let titleMatch = titledWindows.first {
+            return titleMatch
+        }
+
+        if appWindows.indices.contains(window.previewLookupIndex) {
+            return appWindows[window.previewLookupIndex]
+        }
+
+        return appWindows.first
+    }
+
+    private func normalizedWindowTitle(_ title: String?) -> String {
+        (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func shareableContentIncludingOffscreenWindows() async throws -> SCShareableContent {
+        try await withCheckedThrowingContinuation { continuation in
+            SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: false) { content, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                guard let content else {
+                    continuation.resume(throwing: NSError(domain: "Docky.WindowPreview", code: -2, userInfo: nil))
+                    return
+                }
+
+                continuation.resume(returning: content)
+            }
+        }
+    }
+
+    private func constrainedCaptureSize(for sourceSize: CGSize) -> CGSize {
+        guard sourceSize.width > 0, sourceSize.height > 0 else {
+            return CGSize(width: 320, height: 200)
+        }
+
+        let maxSize = CGSize(width: 640, height: 400)
+        let scale = min(maxSize.width / sourceSize.width, maxSize.height / sourceSize.height, 1)
+        return CGSize(
+            width: max(1, floor(sourceSize.width * scale)),
+            height: max(1, floor(sourceSize.height * scale))
+        )
+    }
+
+    private func captureImage(
+        contentFilter: SCContentFilter,
+        configuration: SCStreamConfiguration
+    ) async throws -> CGImage {
+        try await withCheckedThrowingContinuation { continuation in
+            SCScreenshotManager.captureImage(contentFilter: contentFilter, configuration: configuration) { image, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                guard let image else {
+                    continuation.resume(throwing: NSError(domain: "Docky.WindowPreview", code: -1, userInfo: nil))
+                    return
+                }
+
+                continuation.resume(returning: image)
+            }
+        }
+    }
+
+    private func makeThumbnail(from cgImage: CGImage, maxSize: CGSize) -> NSImage? {
+        guard cgImage.width > 0, cgImage.height > 0 else {
+            return nil
+        }
+
+        let sourceSize = CGSize(width: cgImage.width, height: cgImage.height)
+        let scale = min(maxSize.width / sourceSize.width, maxSize.height / sourceSize.height, 1)
+        let thumbnailSize = CGSize(
+            width: max(1, floor(sourceSize.width * scale)),
+            height: max(1, floor(sourceSize.height * scale))
+        )
+
+        let sourceImage = NSImage(cgImage: cgImage, size: sourceSize)
+        let thumbnail = NSImage(size: thumbnailSize)
+        thumbnail.lockFocus()
+        defer { thumbnail.unlockFocus() }
+
+        NSGraphicsContext.current?.imageInterpolation = .high
+        sourceImage.draw(
+            in: NSRect(origin: .zero, size: thumbnailSize),
+            from: NSRect(origin: .zero, size: sourceSize),
+            operation: .copy,
+            fraction: 1
+        )
+        thumbnail.isTemplate = false
+        return thumbnail
     }
 
     private func logMinimizedWindowsDebugSummary(_ summary: String) {
