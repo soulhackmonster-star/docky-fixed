@@ -282,8 +282,7 @@ struct TileContainerView: View {
         for tile in baseTiles {
             result.append(tile)
 
-            guard preferences.showsGroupedOpenedAppsInDock,
-                  case .appFolder(let folder) = tile.content else {
+            guard case .appFolder(let folder) = tile.content else {
                 continue
             }
 

@@ -25,6 +25,7 @@ final class TileStore: ObservableObject {
     private var systemOtherTilesByID: [String: Tile] = [:]
     private var trailingTiles: [Tile] = []
     private var dockPinnedTilesByBundleIdentifier: [String: Tile] = [:]
+    private var expandedInlineAppFolderIDs: Set<String> = []
     /// Currently displayed unpinned running apps, in visual order. May contain
     /// one "ghost" entry at the end — an app that recently exited but sat at
     /// the rightmost position, preserved until something newer takes its slot.
@@ -288,6 +289,7 @@ final class TileStore: ObservableObject {
         }
 
         let folderItem = preferences.pinnedItems[itemIndex]
+        expandedInlineAppFolderIDs.remove(folderItem.id)
         let replacementItems = folderItem.folderBundleIdentifiers.map(PinnedTileItem.app(bundleIdentifier:))
         var pinnedItems = preferences.pinnedItems
         pinnedItems.remove(at: itemIndex)
@@ -361,8 +363,10 @@ final class TileStore: ObservableObject {
         var pinnedItems = preferences.pinnedItems
         switch remainingBundleIdentifiers.count {
         case 0:
+            expandedInlineAppFolderIDs.remove(existingItem.id)
             pinnedItems.remove(at: itemIndex)
         case 1:
+            expandedInlineAppFolderIDs.remove(existingItem.id)
             pinnedItems[itemIndex] = .app(bundleIdentifier: remainingBundleIdentifiers[0])
         default:
             pinnedItems[itemIndex] = .appFolder(
@@ -390,6 +394,9 @@ final class TileStore: ObservableObject {
         }
 
         var pinnedItems = preferences.pinnedItems
+        if mode != .inline {
+            expandedInlineAppFolderIDs.remove(existingItem.id)
+        }
         pinnedItems[itemIndex] = PinnedTileItem(
             id: existingItem.id,
             kind: existingItem.kind,
@@ -414,6 +421,20 @@ final class TileStore: ObservableObject {
         }
 
         return item.folderContentViewMode ?? .grid
+    }
+
+    func toggleInlineAppFolderExpansion(folderID: String) {
+        if expandedInlineAppFolderIDs.contains(folderID) {
+            expandedInlineAppFolderIDs.remove(folderID)
+        } else {
+            expandedInlineAppFolderIDs.insert(folderID)
+        }
+
+        rebuildTiles()
+    }
+
+    func isInlineAppFolderExpanded(folderID: String) -> Bool {
+        expandedInlineAppFolderIDs.contains(folderID)
     }
 
     func widgetPlacement(
@@ -1348,6 +1369,19 @@ final class TileStore: ObservableObject {
     }
 
     private func openedAppTiles(for folder: AppFolderTile) -> [Tile] {
+        if folder.contentViewMode == .inline {
+            guard expandedInlineAppFolderIDs.contains(folder.identifier) else {
+                return []
+            }
+
+            return folder.apps.map { app in
+                Tile(
+                    id: "folder-running:\(folder.identifier):\(app.bundleIdentifier)",
+                    content: .app(app)
+                )
+            }
+        }
+
         guard preferences.showsGroupedOpenedAppsInDock else {
             return []
         }

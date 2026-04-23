@@ -206,6 +206,9 @@ struct TileView: View {
                 },
                 .action("List", isOn: appFolderContentViewMode == .list) {
                     TileStore.shared.setAppFolderContentViewMode(tileID: tile.id, mode: .list)
+                },
+                .action("Inline", isOn: appFolderContentViewMode == .inline) {
+                    TileStore.shared.setAppFolderContentViewMode(tileID: tile.id, mode: .inline)
                 }
             ]))
             actions.append(.divider)
@@ -324,7 +327,7 @@ struct TileView: View {
                             isPresented: $isAppFolderListMenuPresented,
                             preferredEdge: inwardPopoverEdge
                         )
-                    } else {
+                    } else if appFolderContentViewMode == .grid {
                         AppFolderPopoverPresenter(
                             tile: presentedFolder,
                             isPresented: $isAppFolderPopoverPresented,
@@ -654,6 +657,14 @@ struct TileView: View {
             _ = WorkspaceService.shared.restoreMinimizedWindow(window)
         case .appFolder:
             isTooltipPresented = false
+
+            if appFolderContentViewMode == .inline,
+               case .appFolder(let folder) = tile.content {
+                isAppFolderPopoverPresented = false
+                isAppFolderListMenuPresented = false
+                TileStore.shared.toggleInlineAppFolderExpansion(folderID: folder.identifier)
+                return
+            }
 
             if appFolderContentViewMode == .list {
                 isAppFolderPopoverPresented = false

@@ -398,6 +398,7 @@ enum FolderTileDisplayMode: String, CaseIterable, Codable, Identifiable {
 enum FolderTileContentViewMode: String, CaseIterable, Codable, Identifiable {
     case grid
     case list
+    case inline
 
     var id: String { rawValue }
 
@@ -405,6 +406,7 @@ enum FolderTileContentViewMode: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .grid: "Grid"
         case .list: "List"
+        case .inline: "Inline"
         }
     }
 
@@ -415,6 +417,8 @@ enum FolderTileContentViewMode: String, CaseIterable, Codable, Identifiable {
         switch rawValue {
         case Self.list.rawValue:
             self = .list
+        case Self.inline.rawValue:
+            self = .inline
         case Self.grid.rawValue, "fan":
             self = .grid
         default:
