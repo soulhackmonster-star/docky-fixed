@@ -195,6 +195,7 @@ private struct DockEditorOverlayView: View {
         [
             .spacer,
             .divider,
+            .widget(ownerBundleIdentifier: CalendarWidgetSupport.ownerBundleIdentifier, kind: .calendar),
             .widget(ownerBundleIdentifier: WeatherService.widgetOwnerBundleIdentifier, kind: .weather),
             .widget(ownerBundleIdentifier: MediaPlaybackService.genericNowPlayingOwnerBundleIdentifier, kind: .nowPlaying),
             .smartStack
@@ -321,6 +322,8 @@ private struct PaletteItemView: View {
             "line.3.horizontal.decrease"
         case .widget(_, let kind):
             switch kind {
+            case .calendar:
+                "calendar"
             case .nowPlaying:
                 "waveform"
             case .weather:
@@ -352,13 +355,15 @@ private struct PaletteItemView: View {
             "Adds a visual separator inside pinned tiles"
         case .widget(_, let kind):
             switch kind {
+            case .calendar:
+                "Shows the current date and month at a glance"
             case .nowPlaying:
                 "Adds a now playing widget inline"
             case .weather:
                 "Shows current weather for your location"
             }
         case .smartStack:
-            "Adds a stack of available media widgets"
+            "Adds a stack of available widgets"
         }
     }
 }

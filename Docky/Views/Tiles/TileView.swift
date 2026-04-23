@@ -378,7 +378,15 @@ struct TileView: View {
     }
 
     private func renderedWidgetSpan(for span: TileSpan) -> TileSpan {
-        effectiveTileSize < 50 ? .one : span
+        if position.isVertical || effectiveTileSize < 50 {
+            return .one
+        }
+
+        return span
+    }
+
+    private var availableWidgetSpans: [TileSpan] {
+        position.isVertical ? [.one] : TileSpan.allCases
     }
 
     private var nonAppTileCornerRadius: CGFloat {
@@ -796,6 +804,34 @@ struct TileView: View {
 
     private func widgetContextActions(for widget: WidgetTile) -> [ContextAction] {
         switch widget.kind {
+        case .calendar:
+            var actions: [ContextAction] = []
+
+            if isDockyPinnedTile || isDockyTrailingTile {
+                actions.append(.submenu("Span", children: TileSpan.allCases.map { span in
+                    ContextAction.action(spanTitle(for: span), isOn: widget.span == span) {
+                        if isDockyPinnedTile {
+                            TileStore.shared.setPinnedWidgetSpan(tileID: tile.id, span: span)
+                        } else if isDockyTrailingTile {
+                            TileStore.shared.setTrailingWidgetSpan(tileID: tile.id, span: span)
+                        }
+                    }
+                }))
+                actions.append(.divider)
+            }
+
+            actions.append(.action("Refresh Calendar") {
+                CalendarService.shared.refresh(force: true)
+            })
+            actions.append(.divider)
+            actions.append(.action("Open Calendar") {
+                WorkspaceService.shared.activateOrOpen(bundleIdentifier: CalendarWidgetSupport.ownerBundleIdentifier)
+            })
+            actions.append(.divider)
+            actions.append(.action("Remove from Dock") {
+                removeDockyTile()
+            })
+            return actions
         case .nowPlaying:
             var actions: [ContextAction] = []
 
@@ -834,7 +870,7 @@ struct TileView: View {
 
             if isDockyPinnedTile || isDockyTrailingTile {
                 actions.append(.divider)
-                actions.append(.submenu("Span", children: TileSpan.allCases.map { span in
+                actions.append(.submenu("Span", children: availableWidgetSpans.map { span in
                     ContextAction.action(spanTitle(for: span), isOn: widget.span == span) {
                         if isDockyPinnedTile {
                             TileStore.shared.setPinnedWidgetSpan(tileID: tile.id, span: span)
@@ -868,7 +904,7 @@ struct TileView: View {
 
             if isDockyPinnedTile || isDockyTrailingTile {
                 actions.append(.divider)
-                actions.append(.submenu("Span", children: TileSpan.allCases.map { span in
+                actions.append(.submenu("Span", children: availableWidgetSpans.map { span in
                     ContextAction.action(spanTitle(for: span), isOn: widget.span == span) {
                         if isDockyPinnedTile {
                             TileStore.shared.setPinnedWidgetSpan(tileID: tile.id, span: span)
@@ -933,6 +969,8 @@ struct TileView: View {
     }
     private func handleWidgetTap(_ widget: WidgetTile) {
         switch widget.kind {
+        case .calendar:
+            WorkspaceService.shared.activateOrOpen(bundleIdentifier: CalendarWidgetSupport.ownerBundleIdentifier)
         case .nowPlaying:
             Task {
                 await mediaPlayback.togglePlayPause(for: widget.ownerBundleIdentifier)

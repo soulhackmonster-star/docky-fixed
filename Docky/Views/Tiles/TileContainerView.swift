@@ -1024,24 +1024,28 @@ struct TileContainerView: View {
         case (false, .divider):
             CGSize(width: dividerExtent, height: tileHeight)
         case (false, .widget(let widget)):
-            CGSize(width: spanExtent(for: effectiveWidgetSpan(widget.span, tileSize: tileSize), baseTileSize: tileSize, tileSpacing: tileSpacing), height: tileHeight)
+            CGSize(width: spanExtent(for: effectiveWidgetSpan(widget.span, tileSize: tileSize, isVertical: false), baseTileSize: tileSize, tileSpacing: tileSpacing), height: tileHeight)
         case (false, .smartStack(let stack)):
-            CGSize(width: spanExtent(for: effectiveWidgetSpan(stack.span, tileSize: tileSize), baseTileSize: tileSize, tileSpacing: tileSpacing), height: tileHeight)
+            CGSize(width: spanExtent(for: effectiveWidgetSpan(stack.span, tileSize: tileSize, isVertical: false), baseTileSize: tileSize, tileSpacing: tileSpacing), height: tileHeight)
         case (false, _):
             CGSize(width: tileSize, height: tileHeight)
         case (true, .divider):
             CGSize(width: tileHeight / 2, height: dividerExtent)
         case (true, .widget(let widget)):
-            CGSize(width: tileHeight, height: spanExtent(for: effectiveWidgetSpan(widget.span, tileSize: tileSize), baseTileSize: tileSize, tileSpacing: tileSpacing))
+            CGSize(width: tileHeight, height: spanExtent(for: effectiveWidgetSpan(widget.span, tileSize: tileSize, isVertical: true), baseTileSize: tileSize, tileSpacing: tileSpacing))
         case (true, .smartStack(let stack)):
-            CGSize(width: tileHeight, height: spanExtent(for: effectiveWidgetSpan(stack.span, tileSize: tileSize), baseTileSize: tileSize, tileSpacing: tileSpacing))
+            CGSize(width: tileHeight, height: spanExtent(for: effectiveWidgetSpan(stack.span, tileSize: tileSize, isVertical: true), baseTileSize: tileSize, tileSpacing: tileSpacing))
         case (true, _):
             CGSize(width: tileHeight, height: tileSize)
         }
     }
 
-    private static func effectiveWidgetSpan(_ span: TileSpan, tileSize: CGFloat) -> TileSpan {
-        tileSize < 50 ? .one : span
+    private static func effectiveWidgetSpan(_ span: TileSpan, tileSize: CGFloat, isVertical: Bool) -> TileSpan {
+        if isVertical || tileSize < 50 {
+            return .one
+        }
+
+        return span
     }
 
     private static func spanExtent(for span: TileSpan, baseTileSize: CGFloat, tileSpacing: CGFloat) -> CGFloat {

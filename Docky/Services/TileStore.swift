@@ -1221,6 +1221,14 @@ final class TileStore: ObservableObject {
     }
 
     private func allSmartStackWidgets() -> [WidgetTile] {
+        let calendarWidgets = [
+            Self.makeWidgetTile(
+                kind: .calendar,
+                ownerBundleIdentifier: CalendarWidgetSupport.ownerBundleIdentifier,
+                span: .three
+            )
+        ]
+
         let weatherWidgets = [
             Self.makeWidgetTile(
                 kind: .weather,
@@ -1240,7 +1248,7 @@ final class TileStore: ObservableObject {
                 )
             }
 
-        return weatherWidgets + nowPlayingWidgets
+        return calendarWidgets + weatherWidgets + nowPlayingWidgets
     }
 
     private func visibleSmartStackWidgets(hiddenOwnerBundleIdentifiers: [String]) -> [WidgetTile] {

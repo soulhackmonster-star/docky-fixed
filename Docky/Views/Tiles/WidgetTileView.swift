@@ -13,6 +13,13 @@ struct WidgetTileView: View {
 
     var body: some View {
         switch tile.kind {
+        case .calendar:
+            CalendarWidgetTileView(
+                tile: tile,
+                cornerRadius: cornerRadius,
+                renderedSpan: renderedSpan,
+                isWithinStack: isWithinStack
+            )
         case .nowPlaying:
             NowPlayingWidgetTileView(
                 tile: tile,
