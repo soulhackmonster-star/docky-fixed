@@ -10,6 +10,7 @@
 //  but the property surface is ready for a future preferences UI.
 //
 
+import AppKit
 import Combine
 import Foundation
 
@@ -323,6 +324,34 @@ enum DockTileIndicatorShape: String, CaseIterable, Identifiable {
     }
 }
 
+struct DockWindowTintColor: Codable, Equatable {
+    let red: Double
+    let green: Double
+    let blue: Double
+
+    init(red: Double, green: Double, blue: Double) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+    }
+
+    init?(nsColor: NSColor) {
+        guard let rgbColor = nsColor.usingColorSpace(.deviceRGB) else {
+            return nil
+        }
+
+        self.init(
+            red: Double(rgbColor.redComponent),
+            green: Double(rgbColor.greenComponent),
+            blue: Double(rgbColor.blueComponent)
+        )
+    }
+
+    var nsColor: NSColor {
+        NSColor(deviceRed: red, green: green, blue: blue, alpha: 1)
+    }
+}
+
 enum FolderTileDisplayMode: String, CaseIterable, Codable, Identifiable {
     case folder
     case contents
@@ -362,6 +391,35 @@ final class DockyPreferences: ObservableObject {
         didSet {
             guard windowCornerRadius != oldValue else { return }
             defaults.set(Double(windowCornerRadius), forKey: Keys.windowCornerRadius)
+        }
+    }
+
+    /// Optional tint override for the main dock window. `nil` follows the system material tint.
+    @Published var windowTintColor: DockWindowTintColor? {
+        didSet {
+            guard windowTintColor != oldValue else { return }
+            persistWindowTintColor(windowTintColor)
+        }
+    }
+
+    /// Opacity applied to the main dock window tint.
+    @Published var windowTintOpacity: CGFloat {
+        didSet {
+            guard windowTintOpacity != oldValue else { return }
+            defaults.set(Double(windowTintOpacity), forKey: Keys.windowTintOpacity)
+        }
+    }
+
+    /// Optional image path used as the main dock window background.
+    @Published var windowBackgroundImagePath: String? {
+        didSet {
+            guard windowBackgroundImagePath != oldValue else { return }
+
+            if let windowBackgroundImagePath, !windowBackgroundImagePath.isEmpty {
+                defaults.set(windowBackgroundImagePath, forKey: Keys.windowBackgroundImagePath)
+            } else {
+                defaults.removeObject(forKey: Keys.windowBackgroundImagePath)
+            }
         }
     }
 
@@ -440,10 +498,37 @@ final class DockyPreferences: ObservableObject {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
+    var effectiveWindowTintColor: NSColor {
+        windowTintColor?.nsColor ?? Self.defaultWindowTintColor
+    }
+
+    var effectiveWindowTintOpacity: CGFloat {
+        min(max(windowTintOpacity, 0), 1)
+    }
+
+    var effectiveWindowBackgroundImageURL: URL? {
+        guard let windowBackgroundImagePath, !windowBackgroundImagePath.isEmpty else {
+            return nil
+        }
+
+        guard FileManager.default.fileExists(atPath: windowBackgroundImagePath) else {
+            return nil
+        }
+
+        return URL(fileURLWithPath: windowBackgroundImagePath)
+    }
+
+    static var defaultWindowTintColor: NSColor {
+        NSColor.windowBackgroundColor.blended(withFraction: 0.18, of: .black) ?? .windowBackgroundColor
+    }
+
     private enum Keys {
         static let tileVerticalPadding = "docky.tileVerticalPadding"
         static let tileSpacing = "docky.tileSpacing"
         static let windowCornerRadius = "docky.windowCornerRadius"
+        static let windowTintColor = "docky.windowTintColor"
+        static let windowTintOpacity = "docky.windowTintOpacity"
+        static let windowBackgroundImagePath = "docky.windowBackgroundImagePath"
         static let windowPosition = "docky.windowPosition"
         static let autohidesWindow = "docky.autohidesWindow"
         static let activeIndicatorShape = "docky.activeIndicatorShape"
@@ -458,6 +543,9 @@ final class DockyPreferences: ObservableObject {
         static let tileVerticalPadding: CGFloat = 16
         static let tileSpacing: CGFloat = 0
         static let windowCornerRadius: CGFloat = 24
+        static let windowTintColor: DockWindowTintColor? = nil
+        static let windowTintOpacity: CGFloat = 0.22
+        static let windowBackgroundImagePath: String? = nil
         static let windowPosition: DockWindowPosition = .system
         static let autohidesWindow = false
         static let activeIndicatorShape: DockTileIndicatorShape = .dot
@@ -473,6 +561,9 @@ final class DockyPreferences: ObservableObject {
         let storedVerticalPadding = defaults.object(forKey: Keys.tileVerticalPadding) as? Double
         let storedTileSpacing = defaults.object(forKey: Keys.tileSpacing) as? Double
         let storedWindowCornerRadius = defaults.object(forKey: Keys.windowCornerRadius) as? Double
+        let storedWindowTintColor = defaults.data(forKey: Keys.windowTintColor)
+        let storedWindowTintOpacity = defaults.object(forKey: Keys.windowTintOpacity) as? Double
+        let storedWindowBackgroundImagePath = defaults.string(forKey: Keys.windowBackgroundImagePath)
         let storedWindowPosition = defaults.string(forKey: Keys.windowPosition)
         let storedAutohidesWindow = defaults.object(forKey: Keys.autohidesWindow) as? Bool
         let storedActiveIndicatorShape = defaults.string(forKey: Keys.activeIndicatorShape)
@@ -487,6 +578,9 @@ final class DockyPreferences: ObservableObject {
         self.tileVerticalPadding = storedVerticalPadding.map { CGFloat($0) } ?? DefaultValues.tileVerticalPadding
         self.tileSpacing = storedTileSpacing.map { CGFloat($0) } ?? DefaultValues.tileSpacing
         self.windowCornerRadius = storedWindowCornerRadius.map { CGFloat($0) } ?? DefaultValues.windowCornerRadius
+        self.windowTintColor = Self.decodeWindowTintColor(from: storedWindowTintColor) ?? DefaultValues.windowTintColor
+        self.windowTintOpacity = storedWindowTintOpacity.map { CGFloat($0) } ?? DefaultValues.windowTintOpacity
+        self.windowBackgroundImagePath = storedWindowBackgroundImagePath ?? DefaultValues.windowBackgroundImagePath
         self.windowPosition = (storedWindowPosition.flatMap(DockWindowPosition.init(rawValue:)) ?? DefaultValues.windowPosition)
         self.autohidesWindow = storedAutohidesWindow ?? DefaultValues.autohidesWindow
         self.activeIndicatorShape = (storedActiveIndicatorShape.flatMap(DockTileIndicatorShape.init(rawValue:)) ?? DefaultValues.activeIndicatorShape)
@@ -501,6 +595,9 @@ final class DockyPreferences: ObservableObject {
         tileVerticalPadding = DefaultValues.tileVerticalPadding
         tileSpacing = DefaultValues.tileSpacing
         windowCornerRadius = DefaultValues.windowCornerRadius
+        windowTintColor = DefaultValues.windowTintColor
+        windowTintOpacity = DefaultValues.windowTintOpacity
+        windowBackgroundImagePath = DefaultValues.windowBackgroundImagePath
         windowPosition = DefaultValues.windowPosition
         autohidesWindow = DefaultValues.autohidesWindow
         activeIndicatorShape = DefaultValues.activeIndicatorShape
@@ -536,6 +633,28 @@ final class DockyPreferences: ObservableObject {
         }
 
         defaults.set(data, forKey: Keys.trailingItems)
+    }
+
+    private func persistWindowTintColor(_ color: DockWindowTintColor?) {
+        guard let color else {
+            defaults.removeObject(forKey: Keys.windowTintColor)
+            return
+        }
+
+        guard let data = try? encoder.encode(color) else {
+            defaults.removeObject(forKey: Keys.windowTintColor)
+            return
+        }
+
+        defaults.set(data, forKey: Keys.windowTintColor)
+    }
+
+    private static func decodeWindowTintColor(from data: Data?) -> DockWindowTintColor? {
+        guard let data else {
+            return nil
+        }
+
+        return try? JSONDecoder().decode(DockWindowTintColor.self, from: data)
     }
 
     private static func decodeWidgetPlacements(from data: Data?) -> [WidgetPlacement]? {

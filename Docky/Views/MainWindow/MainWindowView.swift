@@ -15,6 +15,7 @@ final class MainWindowView: NSView {
     private let borderWidth: CGFloat = 1
     private let dockSettings = DockSettingsService.shared
     private let preferences = DockyPreferences.shared
+    private let backgroundImageLayer = CALayer()
     private let borderLayer = CAGradientLayer()
     private var cancellables: Set<AnyCancellable> = []
 
@@ -30,24 +31,43 @@ final class MainWindowView: NSView {
 
     override func layout() {
         super.layout()
-        updateBorderLayer(cornerRadius: effectiveCornerRadius)
+
+        let cornerRadius = effectiveCornerRadius
+        updateBackgroundImageLayer(cornerRadius: cornerRadius)
+        updateBorderLayer(cornerRadius: cornerRadius)
     }
 
     override func updateLayer() {
         guard let layer else { return }
 
         let cornerRadius = effectiveCornerRadius
-        let materialTint = NSColor.windowBackgroundColor.blended(withFraction: 0.18, of: .black) ?? .windowBackgroundColor
+        let backgroundImage = resolvedBackgroundImage
 
-        layer.backgroundColor = materialTint.withAlphaComponent(0.22).cgColor
+        if let backgroundImage {
+            backgroundImageLayer.contents = backgroundImage
+            backgroundImageLayer.isHidden = false
+            layer.backgroundColor = NSColor.clear.cgColor
+        } else {
+            let materialTint = preferences.effectiveWindowTintColor
+
+            backgroundImageLayer.contents = nil
+            backgroundImageLayer.isHidden = true
+            layer.backgroundColor = materialTint.withAlphaComponent(preferences.effectiveWindowTintOpacity).cgColor
+        }
+
         layer.cornerCurve = .continuous
         layer.cornerRadius = cornerRadius
+        updateBackgroundImageLayer(cornerRadius: cornerRadius)
         updateBorderLayer(cornerRadius: cornerRadius)
     }
 
     private func setup() {
         wantsLayer = true
+        backgroundImageLayer.actions = ["bounds": NSNull(), "position": NSNull(), "contents": NSNull()]
+        backgroundImageLayer.contentsGravity = .resizeAspectFill
+        backgroundImageLayer.masksToBounds = true
         borderLayer.actions = ["bounds": NSNull(), "position": NSNull()]
+        layer?.addSublayer(backgroundImageLayer)
         layer?.addSublayer(borderLayer)
 
         let hosting = ClickThroughHostingView(rootView: TileContainerView())
@@ -62,6 +82,9 @@ final class MainWindowView: NSView {
         let signals: [AnyPublisher<Void, Never>] = [
             preferences.$tileVerticalPadding.map { _ in () }.eraseToAnyPublisher(),
             preferences.$windowCornerRadius.map { _ in () }.eraseToAnyPublisher(),
+            preferences.$windowTintColor.map { _ in () }.eraseToAnyPublisher(),
+            preferences.$windowTintOpacity.map { _ in () }.eraseToAnyPublisher(),
+            preferences.$windowBackgroundImagePath.map { _ in () }.eraseToAnyPublisher(),
             dockSettings.$tileSize.map { _ in () }.eraseToAnyPublisher(),
             dockSettings.$largeSize.map { _ in () }.eraseToAnyPublisher(),
             dockSettings.$magnification.map { _ in () }.eraseToAnyPublisher(),
@@ -79,6 +102,22 @@ final class MainWindowView: NSView {
     private var maximumCornerRadius: CGFloat {
         let iconHeight = dockSettings.magnification ? dockSettings.largeSize : dockSettings.tileSize
         return (iconHeight + preferences.tileVerticalPadding * 2) / 2
+    }
+
+    private var resolvedBackgroundImage: CGImage? {
+        guard let backgroundImageURL = preferences.effectiveWindowBackgroundImageURL,
+              let image = NSImage(contentsOf: backgroundImageURL) else {
+            return nil
+        }
+
+        return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+    }
+
+    private func updateBackgroundImageLayer(cornerRadius: CGFloat) {
+        backgroundImageLayer.frame = bounds
+        backgroundImageLayer.cornerCurve = .continuous
+        backgroundImageLayer.cornerRadius = cornerRadius
+        backgroundImageLayer.contentsScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
     }
 
     private func borderMask(in rect: CGRect, cornerRadius: CGFloat) -> CALayer {

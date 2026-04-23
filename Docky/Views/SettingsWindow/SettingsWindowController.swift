@@ -39,9 +39,14 @@ private final class SettingsTabViewController: NSTabViewController {
         transitionOptions = []
 
         addTabViewItem(makeTab(
-            label: "General",
-            imageName: "gearshape",
-            view: GeneralSettingsView()
+            label: "Appearance",
+            imageName: "paintbrush",
+            view: AppearanceSettingsView()
+        ))
+        addTabViewItem(makeTab(
+            label: "Behavior",
+            imageName: "switch.2",
+            view: BehaviorSettingsView()
         ))
         addTabViewItem(makeTab(
             label: "Permissions",

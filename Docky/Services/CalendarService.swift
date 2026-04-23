@@ -148,6 +148,7 @@ struct CalendarEventSnapshot: Equatable {
     let location: String
     let calendarTitle: String
     let color: NSColor
+    let quickJoinURL: URL?
 
     nonisolated init(event: EKEvent) {
         let trimmedTitle = event.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -158,5 +159,56 @@ struct CalendarEventSnapshot: Equatable {
         location = event.location?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         calendarTitle = event.calendar.title
         color = NSColor(cgColor: event.calendar.cgColor) ?? .white
+        quickJoinURL = Self.resolveQuickJoinURL(for: event, location: location)
+    }
+
+    private nonisolated static func resolveQuickJoinURL(for event: EKEvent, location: String) -> URL? {
+        if let directURL = normalizedJoinURL(event.url) {
+            return directURL
+        }
+
+        if let notes = event.notes,
+           let notesURL = firstJoinURL(in: notes) {
+            return notesURL
+        }
+
+        if let locationURL = firstJoinURL(in: location) {
+            return locationURL
+        }
+
+        return nil
+    }
+
+    private nonisolated static func firstJoinURL(in text: String) -> URL? {
+        guard !text.isEmpty else {
+            return nil
+        }
+
+        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        let matches = detector?.matches(in: text, options: [], range: range) ?? []
+
+        for match in matches {
+            guard let range = Range(match.range, in: text) else {
+                continue
+            }
+
+            let candidate = String(text[range])
+            if let url = normalizedJoinURL(URL(string: candidate)) {
+                return url
+            }
+        }
+
+        return nil
+    }
+
+    private nonisolated static func normalizedJoinURL(_ url: URL?) -> URL? {
+        guard let url,
+              let scheme = url.scheme?.lowercased(),
+              ["http", "https", "zoommtg", "msteams", "webex", "facetime"].contains(scheme) else {
+            return nil
+        }
+
+        return url
     }
 }

@@ -92,10 +92,7 @@ struct CalendarWidgetTileView: View {
                     .foregroundStyle(Color.primary.opacity(0.98))
                     .lineLimit(2)
 
-                Text(scheduleLine(for: event, now: now))
-                    .font(.system(size: layout.detailFontSize, weight: .medium))
-                    .foregroundStyle(Color.primary.opacity(0.82))
-                    .lineLimit(1)
+                scheduleRow(for: event, layout: layout, now: now, opacity: 0.82)
             }
 
             Spacer(minLength: 0)
@@ -125,12 +122,9 @@ struct CalendarWidgetTileView: View {
                     .foregroundStyle(Color.primary.opacity(0.98))
                     .lineLimit(2)
 
-                Text(scheduleLine(for: event, now: now))
-                    .font(.system(size: layout.detailFontSize, weight: .medium))
-                    .foregroundStyle(Color.primary.opacity(0.84))
-                    .lineLimit(1)
+                scheduleRow(for: event, layout: layout, now: now, opacity: 0.84)
 
-                if !event.location.isEmpty {
+                if shouldShowLocation(for: event) {
                     Text(event.location)
                         .font(.system(size: layout.detailFontSize))
                         .foregroundStyle(Color.primary.opacity(0.66))
@@ -180,8 +174,50 @@ struct CalendarWidgetTileView: View {
             .frame(width: layout.accentWidth)
     }
 
+    private func scheduleRow(for event: CalendarEventSnapshot, layout: LayoutMetrics, now: Date, opacity: Double) -> some View {
+        HStack(spacing: 4) {
+            Text(scheduleLine(for: event, now: now))
+                .lineLimit(1)
+
+            if let quickJoinURL = event.quickJoinURL {
+                Text("•")
+                Button(joinLabel(for: quickJoinURL)) {
+                    NSWorkspace.shared.open(quickJoinURL)
+                }
+                .buttonStyle(.plain)
+                .underline()
+                .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: layout.detailFontSize, weight: .medium))
+        .foregroundStyle(Color.primary.opacity(opacity))
+    }
+
     private var backgroundTintColor: NSColor {
         NSColor.windowBackgroundColor
+    }
+
+    private func shouldShowLocation(for event: CalendarEventSnapshot) -> Bool {
+        guard !event.location.isEmpty else {
+            return false
+        }
+
+        guard let quickJoinURL = event.quickJoinURL else {
+            return true
+        }
+
+        let normalizedLocation = event.location.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalizedLocation != quickJoinURL.absoluteString
+    }
+
+    private func joinLabel(for url: URL) -> String {
+        if let host = url.host, !host.isEmpty {
+            return host.replacingOccurrences(of: "www.", with: "")
+        }
+
+        return url.absoluteString
     }
 
     private func layout(in size: CGSize) -> LayoutMetrics {

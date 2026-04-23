@@ -807,6 +807,13 @@ struct TileView: View {
         case .calendar:
             var actions: [ContextAction] = []
 
+            if let quickJoinURL = CalendarService.shared.nextEvent?.quickJoinURL {
+                actions.append(.action("Quick Join") {
+                    NSWorkspace.shared.open(quickJoinURL)
+                })
+                actions.append(.divider)
+            }
+
             if isDockyPinnedTile || isDockyTrailingTile {
                 actions.append(.submenu("Span", children: TileSpan.allCases.map { span in
                     ContextAction.action(spanTitle(for: span), isOn: widget.span == span) {
