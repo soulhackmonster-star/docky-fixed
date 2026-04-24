@@ -211,12 +211,6 @@ final class PermissionsService: ObservableObject {
         case .accessibility:
             return requestAccessibilityPermission(prompt: true)
         case .systemEventsAutomation:
-            if status(for: .accessibility) != .granted {
-                requestAccessibilityPermission(prompt: true)
-                guard status(for: .accessibility) == .granted else {
-                    return false
-                }
-            }
             return await AppleScriptService.shared.requestSystemEventsAutomationPermission()
         case .screenCapture:
             return requestScreenCapturePermission()

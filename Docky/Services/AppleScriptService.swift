@@ -111,7 +111,7 @@ final class AppleScriptService {
 
     private func runFinderScript(_ command: FinderCommand) async -> Bool {
         do {
-            try execute(source: command.source)
+            try await MainActor.run { try execute(source: command.source) }
             PermissionsService.shared.updateFinderAutomation(status: .granted)
             return true
         } catch let error as AppleScriptServiceError {
@@ -125,7 +125,7 @@ final class AppleScriptService {
 
     private func runSystemEventsPermissionProbe() async -> Bool {
         do {
-            try execute(source: SystemEventsCommand.permissionProbe.source)
+            try await MainActor.run { try execute(source: SystemEventsCommand.permissionProbe.source) }
             PermissionsService.shared.updateSystemEventsAutomation(status: .granted)
             return true
         } catch let error as AppleScriptServiceError {
@@ -382,7 +382,7 @@ private enum SystemEventsCommand {
     var source: String {
         switch self {
         case .permissionProbe:
-            return "tell application id \"com.apple.systemevents\" to keystroke \"\""
+            return "tell application id \"com.apple.systemevents\" to get name"
         }
     }
 }
