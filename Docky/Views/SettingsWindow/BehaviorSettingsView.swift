@@ -41,10 +41,27 @@ struct BehaviorSettingsView: View {
                 .padding(.vertical, 4)
 
                 VStack(alignment: .leading, spacing: 8) {
+                    Text("Overflow Behavior")
+                        .font(.headline)
+
+                    Picker("Overflow Behavior", selection: $preferences.overflowBehavior) {
+                        ForEach(DockOverflowBehavior.allCases) { behavior in
+                            Text(behavior.title).tag(behavior)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Text("Choose whether Docky shrinks to fit the screen or keeps its size and scrolls when it runs out of room on the current dock axis.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 4)
+
+                VStack(alignment: .leading, spacing: 8) {
                     Toggle("Show Active/Pinned Separator", isOn: $preferences.showsActivePinnedSeparator)
                         .font(.headline)
 
-                    Text("Shows the divider between pinned apps and unpinned running apps.")
+                    Text("When turned off, unpinned running apps are merged into the pinned section so the dock behaves like a single app strip.")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }

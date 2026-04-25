@@ -198,6 +198,89 @@ final class TileStore: ObservableObject {
     }
 
     @discardableResult
+    func replacePinnedAppsWithDefaultDockAppsForLoadTest() -> Int {
+        let installedBundleIdentifiers = Self.defaultDockLoadTestBundleIdentifiers.filter {
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil
+        }
+
+        preferences.pinnedItems = installedBundleIdentifiers.map(PinnedTileItem.app(bundleIdentifier:))
+        refreshPinnedTilesFromPreferences()
+        rebuildTiles()
+        return installedBundleIdentifiers.count
+    }
+
+    @discardableResult
+    func replacePinnedAppsWithEveryInstalledAppForLoadTest() -> Int {
+        let installedBundleIdentifiers = Self.installedApplicationBundleIdentifiers()
+        preferences.pinnedItems = installedBundleIdentifiers.map(PinnedTileItem.app(bundleIdentifier:))
+        refreshPinnedTilesFromPreferences()
+        rebuildTiles()
+        return installedBundleIdentifiers.count
+    }
+
+    @discardableResult
+    func resetPinnedItemsToSystemDock() -> Int {
+        guard let plist = DockPlistReader.read() else {
+            return 0
+        }
+
+        let apps = (plist["persistent-apps"] as? [[String: Any]]) ?? []
+        let systemPinnedTiles = apps.enumerated().compactMap { index, entry in
+            Self.parse(entry: entry, fallbackID: Self.fallbackTileID(for: entry, at: index, section: "persistent-apps"))
+        }
+        let systemPinnedItems = systemPinnedTiles.compactMap(Self.pinnedItem(from:))
+        guard !systemPinnedItems.isEmpty else {
+            return 0
+        }
+
+        preferences.pinnedItems = systemPinnedItems
+        refreshPinnedTilesFromPreferences()
+        rebuildTiles()
+        return systemPinnedItems.count
+    }
+
+    func seedDummyDebugLayout() {
+        let diaBundleIdentifier = Self.resolveInstalledAppBundleIdentifier(named: "Dia")
+        let slackBundleIdentifier = Self.resolveInstalledAppBundleIdentifier(named: "Slack")
+        let appFolderBundleIdentifiers = ["Xcode", "Ghostty", "Symbols"].compactMap {
+            Self.resolveInstalledAppBundleIdentifier(named: $0)
+        }
+
+        var pinnedItems: [PinnedTileItem] = []
+        if let diaBundleIdentifier {
+            pinnedItems.append(.app(bundleIdentifier: diaBundleIdentifier))
+        }
+        if let slackBundleIdentifier {
+            pinnedItems.append(.app(bundleIdentifier: slackBundleIdentifier))
+        }
+        if appFolderBundleIdentifiers.count >= 2 {
+            pinnedItems.append(.appFolder(
+                displayName: "Folder",
+                bundleIdentifiers: appFolderBundleIdentifiers,
+                contentViewMode: .grid
+            ))
+        } else {
+            pinnedItems.append(contentsOf: appFolderBundleIdentifiers.map(PinnedTileItem.app(bundleIdentifier:)))
+        }
+
+        let downloadsURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Downloads", isDirectory: true)
+        preferences.pinnedItems = pinnedItems
+        preferences.trailingItems = [
+            .smartStack(),
+            .folder(
+                url: downloadsURL,
+                displayName: "Downloads",
+                displayMode: .folder,
+                contentViewMode: .grid
+            )
+        ]
+        refreshPinnedTilesFromPreferences()
+        refreshTrailingTilesFromPreferences()
+        rebuildTiles()
+    }
+
+    @discardableResult
     func pinApp(bundleIdentifier: String, at destinationIndex: Int) -> Bool {
         guard !bundleIdentifier.isEmpty else {
             return false
@@ -1053,6 +1136,99 @@ final class TileStore: ObservableObject {
     }
 
     private static let finderBundleID = "com.apple.finder"
+    private static let appSearchDirectories = [
+        URL(fileURLWithPath: "/Applications", isDirectory: true),
+        URL(fileURLWithPath: "/System/Applications", isDirectory: true),
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications", isDirectory: true)
+    ]
+    private static let defaultDockLoadTestBundleIdentifiers = [
+        "com.apple.launchpad.launcher",
+        "com.apple.Safari",
+        "com.apple.MobileSMS",
+        "com.apple.mail",
+        "com.apple.iCal",
+        "com.apple.AddressBook",
+        "com.apple.reminders",
+        "com.apple.Notes",
+        "com.apple.freeform",
+        "com.apple.FaceTime",
+        "com.apple.Photos",
+        "com.apple.Maps",
+        "com.apple.TV",
+        "com.apple.Music",
+        "com.apple.podcasts",
+        "com.apple.AppStore",
+        "com.apple.systempreferences"
+    ]
+
+    private static func installedApplications() -> [(bundleIdentifier: String, displayName: String)] {
+        var bundleIdentifiersByURL: [URL: String] = [:]
+
+        for directoryURL in appSearchDirectories {
+            guard let enumerator = FileManager.default.enumerator(
+                at: directoryURL,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            ) else {
+                continue
+            }
+
+            for case let appURL as URL in enumerator {
+                guard appURL.pathExtension == "app",
+                      let bundleIdentifier = Bundle(url: appURL)?.bundleIdentifier,
+                      !bundleIdentifier.isEmpty,
+                      bundleIdentifier != finderBundleID,
+                      bundleIdentifier != Bundle.main.bundleIdentifier else {
+                    continue
+                }
+
+                bundleIdentifiersByURL[appURL] = bundleIdentifier
+            }
+        }
+
+        return Array(Set(bundleIdentifiersByURL.values)).map { bundleIdentifier in
+            let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)
+            let displayName = url.map { FileManager.default.displayName(atPath: $0.path) } ?? bundleIdentifier
+            return (bundleIdentifier: bundleIdentifier, displayName: displayName)
+        }
+        .sorted { lhs, rhs in
+            let comparison = lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+            if comparison == .orderedSame {
+                return lhs.bundleIdentifier.localizedCaseInsensitiveCompare(rhs.bundleIdentifier) == .orderedAscending
+            }
+            return comparison == .orderedAscending
+        }
+    }
+
+    private static func installedApplicationBundleIdentifiers() -> [String] {
+        installedApplications().map(\.bundleIdentifier)
+    }
+
+    private static func resolveInstalledAppBundleIdentifier(named name: String) -> String? {
+        let normalizedName = normalizedApplicationName(name)
+        let applications = installedApplications()
+
+        if let exactMatch = applications.first(where: {
+            normalizedApplicationName($0.displayName) == normalizedName
+        }) {
+            return exactMatch.bundleIdentifier
+        }
+
+        let partialMatches = applications.filter {
+            normalizedApplicationName($0.displayName).contains(normalizedName)
+        }
+        guard partialMatches.count == 1 else {
+            return nil
+        }
+        return partialMatches[0].bundleIdentifier
+    }
+
+    private static func normalizedApplicationName(_ name: String) -> String {
+        name
+            .replacingOccurrences(of: ".app", with: "", options: [.caseInsensitive])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    }
 
     private func bundleIdentifier(of tile: Tile) -> String? {
         if case .app(let app) = tile.content {
@@ -1330,13 +1506,16 @@ final class TileStore: ObservableObject {
 
         let runningTiles = displayedRunning.map(Self.tile(for:))
         let minimizedWindowTiles = WorkspaceService.shared.minimizedWindows.map(Self.tile(for:))
+        let mergedPinnedTiles = preferences.showsActivePinnedSeparator
+            ? pinnedWithoutFinder
+            : pinnedWithoutFinder + runningTiles
 
         var result: [Tile] = tilesWithWidgets(appendedTo: [Self.finderTile()])
-        result.append(contentsOf: tilesWithWidgets(appendedTo: pinnedWithoutFinder))
+        result.append(contentsOf: tilesWithWidgets(appendedTo: mergedPinnedTiles))
         if preferences.showsActivePinnedSeparator, !runningTiles.isEmpty {
             result.append(Tile(id: "divider:running", content: .divider))
+            result.append(contentsOf: tilesWithWidgets(appendedTo: runningTiles))
         }
-        result.append(contentsOf: tilesWithWidgets(appendedTo: runningTiles))
         result.append(Tile(id: "divider:trailing", content: .divider))
         result.append(contentsOf: trailingTiles(withInsertedMinimizedWindows: minimizedWindowTiles))
         tiles = result

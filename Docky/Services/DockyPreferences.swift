@@ -319,6 +319,20 @@ enum DockWindowPosition: String, CaseIterable, Identifiable {
     }
 }
 
+enum DockOverflowBehavior: String, CaseIterable, Identifiable {
+    case rescale
+    case scroll
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .rescale: "Rescale"
+        case .scroll: "Scroll"
+        }
+    }
+}
+
 enum DockClipShape: String, CaseIterable, Identifiable {
     case rounded
     case circle
@@ -559,6 +573,14 @@ final class DockyPreferences: ObservableObject {
         }
     }
 
+    /// How Docky handles overflow when tiles exceed the screen on the dock axis.
+    @Published var overflowBehavior: DockOverflowBehavior {
+        didSet {
+            guard overflowBehavior != oldValue else { return }
+            defaults.set(overflowBehavior.rawValue, forKey: Keys.overflowBehavior)
+        }
+    }
+
     /// Whether Docky shows the divider between pinned apps and unpinned running apps.
     @Published var showsActivePinnedSeparator: Bool {
         didSet {
@@ -735,6 +757,7 @@ final class DockyPreferences: ObservableObject {
         static let windowBackgroundImagePath = "docky.windowBackgroundImagePath"
         static let windowPosition = "docky.windowPosition"
         static let autohidesWindow = "docky.autohidesWindow"
+        static let overflowBehavior = "docky.overflowBehavior"
         static let showsActivePinnedSeparator = "docky.showsActivePinnedSeparator"
         static let activeIndicatorShape = "docky.activeIndicatorShape"
         static let activeIndicatorImagePath = "docky.activeIndicatorImagePath"
@@ -758,6 +781,7 @@ final class DockyPreferences: ObservableObject {
         static let windowBackgroundImagePath: String? = nil
         static let windowPosition: DockWindowPosition = .system
         static let autohidesWindow = false
+        static let overflowBehavior: DockOverflowBehavior = .rescale
         static let showsActivePinnedSeparator = true
         static let activeIndicatorShape: DockTileIndicatorShape = .dot
         static let activeIndicatorImagePath: String? = nil
@@ -782,6 +806,7 @@ final class DockyPreferences: ObservableObject {
         let storedWindowBackgroundImagePath = defaults.string(forKey: Keys.windowBackgroundImagePath)
         let storedWindowPosition = defaults.string(forKey: Keys.windowPosition)
         let storedAutohidesWindow = defaults.object(forKey: Keys.autohidesWindow) as? Bool
+        let storedOverflowBehavior = defaults.string(forKey: Keys.overflowBehavior)
         let storedShowsActivePinnedSeparator = defaults.object(forKey: Keys.showsActivePinnedSeparator) as? Bool
         let storedActiveIndicatorShape = defaults.string(forKey: Keys.activeIndicatorShape)
         let storedActiveIndicatorImagePath = defaults.string(forKey: Keys.activeIndicatorImagePath)
@@ -805,6 +830,7 @@ final class DockyPreferences: ObservableObject {
         self.windowBackgroundImagePath = storedWindowBackgroundImagePath ?? DefaultValues.windowBackgroundImagePath
         self.windowPosition = (storedWindowPosition.flatMap(DockWindowPosition.init(rawValue:)) ?? DefaultValues.windowPosition)
         self.autohidesWindow = storedAutohidesWindow ?? DefaultValues.autohidesWindow
+        self.overflowBehavior = (storedOverflowBehavior.flatMap(DockOverflowBehavior.init(rawValue:)) ?? DefaultValues.overflowBehavior)
         self.showsActivePinnedSeparator = storedShowsActivePinnedSeparator ?? DefaultValues.showsActivePinnedSeparator
         self.activeIndicatorShape = (storedActiveIndicatorShape.flatMap(DockTileIndicatorShape.init(rawValue:)) ?? DefaultValues.activeIndicatorShape)
         self.activeIndicatorImagePath = storedActiveIndicatorImagePath ?? DefaultValues.activeIndicatorImagePath
@@ -828,6 +854,7 @@ final class DockyPreferences: ObservableObject {
         windowBackgroundImagePath = DefaultValues.windowBackgroundImagePath
         windowPosition = DefaultValues.windowPosition
         autohidesWindow = DefaultValues.autohidesWindow
+        overflowBehavior = DefaultValues.overflowBehavior
         showsActivePinnedSeparator = DefaultValues.showsActivePinnedSeparator
         activeIndicatorShape = DefaultValues.activeIndicatorShape
         activeIndicatorImagePath = DefaultValues.activeIndicatorImagePath

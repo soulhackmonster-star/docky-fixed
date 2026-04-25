@@ -13,6 +13,7 @@ struct TileView: View {
     let tile: Tile
     let isDragging: Bool
     @ObservedObject private var dockSettings = DockSettingsService.shared
+    @ObservedObject private var layout = DockLayoutService.shared
     @ObservedObject private var preferences = DockyPreferences.shared
     @ObservedObject private var workspace = WorkspaceService.shared
     @ObservedObject private var mediaPlayback = MediaPlaybackService.shared
@@ -33,6 +34,7 @@ struct TileView: View {
         self.tile = tile
         self.isDragging = isDragging
         self._dockSettings = ObservedObject(wrappedValue: DockSettingsService.shared)
+        self._layout = ObservedObject(wrappedValue: DockLayoutService.shared)
         self._preferences = ObservedObject(wrappedValue: DockyPreferences.shared)
         self._workspace = ObservedObject(wrappedValue: WorkspaceService.shared)
         self._mediaPlayback = ObservedObject(wrappedValue: MediaPlaybackService.shared)
@@ -245,7 +247,7 @@ struct TileView: View {
             .overlay(alignment: runningIndicatorAlignment) {
                 runningIndicator
                     .padding(runningIndicatorEdge, runningIndicatorInset)
-                    .offset(y: -max((preferences.tileVerticalPadding / 2), 2))
+                    .offset(y: -max((layout.scaled(preferences.tileVerticalPadding) / 2), 2))
             }
             .contentShape(Rectangle())
             .onHover(perform: updateHoverState)
@@ -470,7 +472,7 @@ struct TileView: View {
         case .divider:
             0
         default:
-            preferences.tileVerticalPadding
+            layout.scaled(preferences.tileVerticalPadding)
         }
     }
 
@@ -499,11 +501,11 @@ struct TileView: View {
     }
 
     private var effectiveTileSize: CGFloat {
-        dockSettings.magnification ? dockSettings.largeSize : dockSettings.tileSize
+        layout.scaled(dockSettings.magnification ? dockSettings.largeSize : dockSettings.tileSize)
     }
 
     private func renderedWidgetSpan(for span: TileSpan) -> TileSpan {
-        if position.isVertical || effectiveTileSize < 50 {
+        if layout.compactsWidgetsForOverflow || position.isVertical || effectiveTileSize < 50 {
             return .one
         }
 

@@ -15,6 +15,7 @@ final class MainWindowView: NSView {
     private let borderWidth: CGFloat = 1
     private let dockSettings = DockSettingsService.shared
     private let preferences = DockyPreferences.shared
+    private let layoutService = DockLayoutService.shared
     private let backgroundImageLayer = CALayer()
     private let borderLayer = CAGradientLayer()
     private var cancellables: Set<AnyCancellable> = []
@@ -86,6 +87,7 @@ final class MainWindowView: NSView {
             preferences.$windowTintColor.map { _ in () }.eraseToAnyPublisher(),
             preferences.$windowTintOpacity.map { _ in () }.eraseToAnyPublisher(),
             preferences.$windowBackgroundImagePath.map { _ in () }.eraseToAnyPublisher(),
+            layoutService.$contentScale.map { _ in () }.eraseToAnyPublisher(),
             dockSettings.$tileSize.map { _ in () }.eraseToAnyPublisher(),
             dockSettings.$largeSize.map { _ in () }.eraseToAnyPublisher(),
             dockSettings.$magnification.map { _ in () }.eraseToAnyPublisher(),
@@ -104,8 +106,8 @@ final class MainWindowView: NSView {
     }
 
     private var maximumCornerRadius: CGFloat {
-        let iconHeight = dockSettings.magnification ? dockSettings.largeSize : dockSettings.tileSize
-        return (iconHeight + preferences.tileVerticalPadding * 2) / 2
+        let iconHeight = layoutService.scaled(dockSettings.magnification ? dockSettings.largeSize : dockSettings.tileSize)
+        return (iconHeight + layoutService.scaled(preferences.tileVerticalPadding) * 2) / 2
     }
 
     private var resolvedBackgroundImage: CGImage? {
