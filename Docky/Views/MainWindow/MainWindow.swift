@@ -126,6 +126,7 @@ final class MainWindow: NSWindow {
             preferences.$tileVerticalPadding.map { _ in () }.eraseToAnyPublisher(),
             preferences.$tileSpacing.map { _ in () }.eraseToAnyPublisher(),
             preferences.$overflowBehavior.map { _ in () }.eraseToAnyPublisher(),
+            preferences.$windowAxisSizing.map { _ in () }.eraseToAnyPublisher(),
             preferences.$windowPosition.map { _ in () }.eraseToAnyPublisher(),
         ]
         Publishers.MergeMany(layoutSignals)
@@ -249,7 +250,8 @@ final class MainWindow: NSWindow {
             0,
             axisLength(of: screenBounds.size, position: position) - contentPadding * 2
         )
-        let availableAxisLength = max(
+        let shouldUseFullAxisSizing = preferences.windowAxisSizing == .fullAxis
+        let contentAvailableAxisLength = max(
             0,
             unreservedAvailableAxisLength
                 - (shouldReserveStatusBarLength(
@@ -258,6 +260,9 @@ final class MainWindow: NSWindow {
                     position: position
                 ) ? reservedStatusBarLength : 0)
         )
+        let availableAxisLength = shouldUseFullAxisSizing
+            ? unreservedAvailableAxisLength
+            : contentAvailableAxisLength
         let compactsWidgetsForOverflow = shouldCompactWidgetsForOverflow(
             contentSize: naturalContentSize,
             availableAxisLength: availableAxisLength,
@@ -292,7 +297,9 @@ final class MainWindow: NSWindow {
             compactWidgets: compactsWidgetsForOverflow,
             edgePadding: TileContainerView.edgePadding * contentScale
         )
-        let displayedAxisLength = min(axisLength(of: displayedContentSize, position: position), availableAxisLength)
+        let displayedAxisLength = shouldUseFullAxisSizing
+            ? availableAxisLength
+            : min(axisLength(of: displayedContentSize, position: position), availableAxisLength)
         let width = displayedWindowWidth(
             for: displayedContentSize,
             displayedAxisLength: displayedAxisLength,

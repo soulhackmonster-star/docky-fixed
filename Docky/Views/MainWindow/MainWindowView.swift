@@ -58,6 +58,7 @@ final class MainWindowView: NSView {
 
         layer.cornerCurve = .continuous
         layer.cornerRadius = cornerRadius
+        borderLayer.isHidden = preferences.disablesGlassLook
         updateBackgroundImageLayer(cornerRadius: cornerRadius)
         updateBorderLayer(cornerRadius: cornerRadius)
     }
@@ -86,6 +87,7 @@ final class MainWindowView: NSView {
             preferences.$windowClipShape.map { _ in () }.eraseToAnyPublisher(),
             preferences.$windowTintColor.map { _ in () }.eraseToAnyPublisher(),
             preferences.$windowTintOpacity.map { _ in () }.eraseToAnyPublisher(),
+            preferences.$disablesGlassLook.map { _ in () }.eraseToAnyPublisher(),
             preferences.$windowBackgroundImagePath.map { _ in () }.eraseToAnyPublisher(),
             layoutService.$contentScale.map { _ in () }.eraseToAnyPublisher(),
             dockSettings.$tileSize.map { _ in () }.eraseToAnyPublisher(),
@@ -141,6 +143,11 @@ final class MainWindowView: NSView {
     }
 
     private func updateBorderLayer(cornerRadius: CGFloat) {
+        guard !preferences.disablesGlassLook else {
+            borderLayer.mask = nil
+            return
+        }
+
         let borderFrame = bounds
         let borderCornerRadius = cornerRadius
 

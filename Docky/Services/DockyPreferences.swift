@@ -333,6 +333,20 @@ enum DockOverflowBehavior: String, CaseIterable, Identifiable {
     }
 }
 
+enum DockWindowAxisSizing: String, CaseIterable, Identifiable {
+    case fitContent
+    case fullAxis
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .fitContent: "Fit Content"
+        case .fullAxis: "Full Axis"
+        }
+    }
+}
+
 enum DockClipShape: String, CaseIterable, Identifiable {
     case rounded
     case circle
@@ -544,6 +558,14 @@ final class DockyPreferences: ObservableObject {
         }
     }
 
+    /// Whether the main dock window should suppress its gradient border chrome.
+    @Published var disablesGlassLook: Bool {
+        didSet {
+            guard disablesGlassLook != oldValue else { return }
+            defaults.set(disablesGlassLook, forKey: Keys.disablesGlassLook)
+        }
+    }
+
     /// Optional image path used as the main dock window background.
     @Published var windowBackgroundImagePath: String? {
         didSet {
@@ -578,6 +600,14 @@ final class DockyPreferences: ObservableObject {
         didSet {
             guard overflowBehavior != oldValue else { return }
             defaults.set(overflowBehavior.rawValue, forKey: Keys.overflowBehavior)
+        }
+    }
+
+    /// Whether Docky's window hugs its content or stretches across the full dock axis.
+    @Published var windowAxisSizing: DockWindowAxisSizing {
+        didSet {
+            guard windowAxisSizing != oldValue else { return }
+            defaults.set(windowAxisSizing.rawValue, forKey: Keys.windowAxisSizing)
         }
     }
 
@@ -754,10 +784,12 @@ final class DockyPreferences: ObservableObject {
         static let windowClipShape = "docky.windowClipShape"
         static let windowTintColor = "docky.windowTintColor"
         static let windowTintOpacity = "docky.windowTintOpacity"
+        static let disablesGlassLook = "docky.disablesGlassLook"
         static let windowBackgroundImagePath = "docky.windowBackgroundImagePath"
         static let windowPosition = "docky.windowPosition"
         static let autohidesWindow = "docky.autohidesWindow"
         static let overflowBehavior = "docky.overflowBehavior"
+        static let windowAxisSizing = "docky.windowAxisSizing"
         static let showsActivePinnedSeparator = "docky.showsActivePinnedSeparator"
         static let activeIndicatorShape = "docky.activeIndicatorShape"
         static let activeIndicatorImagePath = "docky.activeIndicatorImagePath"
@@ -778,10 +810,12 @@ final class DockyPreferences: ObservableObject {
         static let windowClipShape: DockClipShape = .rounded
         static let windowTintColor: DockColor? = nil
         static let windowTintOpacity: CGFloat = 0.22
+        static let disablesGlassLook = false
         static let windowBackgroundImagePath: String? = nil
         static let windowPosition: DockWindowPosition = .system
         static let autohidesWindow = false
         static let overflowBehavior: DockOverflowBehavior = .rescale
+        static let windowAxisSizing: DockWindowAxisSizing = .fitContent
         static let showsActivePinnedSeparator = true
         static let activeIndicatorShape: DockTileIndicatorShape = .dot
         static let activeIndicatorImagePath: String? = nil
@@ -803,10 +837,12 @@ final class DockyPreferences: ObservableObject {
         let storedWindowClipShape = defaults.string(forKey: Keys.windowClipShape)
         let storedWindowTintColor = defaults.data(forKey: Keys.windowTintColor)
         let storedWindowTintOpacity = defaults.object(forKey: Keys.windowTintOpacity) as? Double
+        let storedDisablesGlassLook = defaults.object(forKey: Keys.disablesGlassLook) as? Bool
         let storedWindowBackgroundImagePath = defaults.string(forKey: Keys.windowBackgroundImagePath)
         let storedWindowPosition = defaults.string(forKey: Keys.windowPosition)
         let storedAutohidesWindow = defaults.object(forKey: Keys.autohidesWindow) as? Bool
         let storedOverflowBehavior = defaults.string(forKey: Keys.overflowBehavior)
+        let storedWindowAxisSizing = defaults.string(forKey: Keys.windowAxisSizing)
         let storedShowsActivePinnedSeparator = defaults.object(forKey: Keys.showsActivePinnedSeparator) as? Bool
         let storedActiveIndicatorShape = defaults.string(forKey: Keys.activeIndicatorShape)
         let storedActiveIndicatorImagePath = defaults.string(forKey: Keys.activeIndicatorImagePath)
@@ -827,10 +863,12 @@ final class DockyPreferences: ObservableObject {
         self.windowClipShape = (storedWindowClipShape.flatMap(DockClipShape.init(rawValue:)) ?? DefaultValues.windowClipShape)
         self.windowTintColor = Self.decodeColor(from: storedWindowTintColor) ?? DefaultValues.windowTintColor
         self.windowTintOpacity = storedWindowTintOpacity.map { CGFloat($0) } ?? DefaultValues.windowTintOpacity
+        self.disablesGlassLook = storedDisablesGlassLook ?? DefaultValues.disablesGlassLook
         self.windowBackgroundImagePath = storedWindowBackgroundImagePath ?? DefaultValues.windowBackgroundImagePath
         self.windowPosition = (storedWindowPosition.flatMap(DockWindowPosition.init(rawValue:)) ?? DefaultValues.windowPosition)
         self.autohidesWindow = storedAutohidesWindow ?? DefaultValues.autohidesWindow
         self.overflowBehavior = (storedOverflowBehavior.flatMap(DockOverflowBehavior.init(rawValue:)) ?? DefaultValues.overflowBehavior)
+        self.windowAxisSizing = (storedWindowAxisSizing.flatMap(DockWindowAxisSizing.init(rawValue:)) ?? DefaultValues.windowAxisSizing)
         self.showsActivePinnedSeparator = storedShowsActivePinnedSeparator ?? DefaultValues.showsActivePinnedSeparator
         self.activeIndicatorShape = (storedActiveIndicatorShape.flatMap(DockTileIndicatorShape.init(rawValue:)) ?? DefaultValues.activeIndicatorShape)
         self.activeIndicatorImagePath = storedActiveIndicatorImagePath ?? DefaultValues.activeIndicatorImagePath
@@ -851,10 +889,12 @@ final class DockyPreferences: ObservableObject {
         windowClipShape = DefaultValues.windowClipShape
         windowTintColor = DefaultValues.windowTintColor
         windowTintOpacity = DefaultValues.windowTintOpacity
+        disablesGlassLook = DefaultValues.disablesGlassLook
         windowBackgroundImagePath = DefaultValues.windowBackgroundImagePath
         windowPosition = DefaultValues.windowPosition
         autohidesWindow = DefaultValues.autohidesWindow
         overflowBehavior = DefaultValues.overflowBehavior
+        windowAxisSizing = DefaultValues.windowAxisSizing
         showsActivePinnedSeparator = DefaultValues.showsActivePinnedSeparator
         activeIndicatorShape = DefaultValues.activeIndicatorShape
         activeIndicatorImagePath = DefaultValues.activeIndicatorImagePath
