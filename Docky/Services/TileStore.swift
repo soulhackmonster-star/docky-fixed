@@ -1610,21 +1610,9 @@ final class TileStore: ObservableObject {
     }
 
     private func allSmartStackWidgets() -> [WidgetTile] {
-        let calendarWidgets = [
-            Self.makeWidgetTile(
-                kind: .calendar,
-                ownerBundleIdentifier: CalendarWidgetSupport.ownerBundleIdentifier,
-                span: .three
-            )
-        ]
-
-        let weatherWidgets = [
-            Self.makeWidgetTile(
-                kind: .weather,
-                ownerBundleIdentifier: WeatherService.widgetOwnerBundleIdentifier,
-                span: .three
-            )
-        ]
+        let staticWidgets = WidgetCatalog.smartStackRegistrations.map {
+            $0.makeTile()
+        }
 
         let nowPlayingWidgets = mediaPlayback.statesByBundleIdentifier.values
             .filter(\.hasContent)
@@ -1637,7 +1625,7 @@ final class TileStore: ObservableObject {
                 )
             }
 
-        return calendarWidgets + weatherWidgets + nowPlayingWidgets
+        return staticWidgets + nowPlayingWidgets
     }
 
     private func visibleSmartStackWidgets(hiddenOwnerBundleIdentifiers: [String]) -> [WidgetTile] {

@@ -6,10 +6,6 @@
 import AppKit
 import SwiftUI
 
-enum CalendarWidgetSupport {
-    static let ownerBundleIdentifier = "com.apple.iCal"
-}
-
 struct CalendarWidgetTileView: View {
     let tile: WidgetTile
     let cornerRadius: CGFloat

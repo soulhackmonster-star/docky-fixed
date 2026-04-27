@@ -20,6 +20,20 @@ struct WidgetTileView: View {
                 renderedSpan: renderedSpan,
                 isWithinStack: isWithinStack
             )
+        case .reminders:
+            RemindersWidgetTileView(
+                tile: tile,
+                cornerRadius: cornerRadius,
+                renderedSpan: renderedSpan,
+                isWithinStack: isWithinStack
+            )
+        case .batteries:
+            BatteriesWidgetTileView(
+                tile: tile,
+                cornerRadius: cornerRadius,
+                renderedSpan: renderedSpan,
+                isWithinStack: isWithinStack
+            )
         case .nowPlaying:
             NowPlayingWidgetTileView(
                 tile: tile,

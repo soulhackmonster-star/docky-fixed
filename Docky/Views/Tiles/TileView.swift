@@ -971,33 +971,73 @@ struct TileView: View {
                 actions.append(.action("Quick Join") {
                     NSWorkspace.shared.open(quickJoinURL)
                 })
-                actions.append(.divider)
             }
 
-            if isDockyPinnedTile || isDockyTrailingTile {
-                actions.append(.submenu("Span", children: TileSpan.allCases.map { span in
-                    ContextAction.action(spanTitle(for: span), isOn: widget.span == span) {
-                        if isDockyPinnedTile {
-                            TileStore.shared.setPinnedWidgetSpan(tileID: tile.id, span: span)
-                        } else if isDockyTrailingTile {
-                            TileStore.shared.setTrailingWidgetSpan(tileID: tile.id, span: span)
-                        }
-                    }
-                }))
-                actions.append(.divider)
+            if let spanMenuAction = widgetSpanMenuAction(for: widget) {
+                appendDividerIfNeeded(to: &actions)
+                actions.append(spanMenuAction)
             }
 
+            appendDividerIfNeeded(to: &actions)
             actions.append(.action("Refresh Calendar") {
                 CalendarService.shared.refresh(force: true)
             })
             actions.append(.divider)
             actions.append(.action("Open Calendar") {
-                WorkspaceService.shared.activateOrOpen(bundleIdentifier: CalendarWidgetSupport.ownerBundleIdentifier)
+                WorkspaceService.shared.activateOrOpen(bundleIdentifier: WidgetOwnerBundleIdentifiers.calendar)
             })
             actions.append(.divider)
-            actions.append(.action("Remove from Dock") {
-                removeDockyTile()
+            actions.append(widgetRemovalAction(for: widget))
+            return actions
+        case .reminders:
+            var actions: [ContextAction] = []
+
+            let completionActions = RemindersService.shared.snapshot?.completionCandidates.map { item in
+                ContextAction.action(reminderCompletionTitle(for: item, now: Date())) {
+                    Task {
+                        _ = await RemindersService.shared.completeReminder(identifier: item.identifier)
+                    }
+                }
+            } ?? []
+
+            if !completionActions.isEmpty {
+                actions.append(.submenu("Complete", children: completionActions))
+            }
+
+            if let spanMenuAction = widgetSpanMenuAction(for: widget) {
+                appendDividerIfNeeded(to: &actions)
+                actions.append(spanMenuAction)
+            }
+
+            appendDividerIfNeeded(to: &actions)
+            actions.append(.action("Refresh Reminders") {
+                RemindersService.shared.refresh(force: true)
             })
+            actions.append(.divider)
+            actions.append(.action("Open Reminders") {
+                WorkspaceService.shared.activateOrOpen(bundleIdentifier: WidgetOwnerBundleIdentifiers.reminders)
+            })
+            actions.append(.divider)
+            actions.append(widgetRemovalAction(for: widget))
+            return actions
+        case .batteries:
+            var actions: [ContextAction] = [
+                .action("Refresh Batteries") {
+                    BatteriesService.shared.refresh(force: true)
+                }
+            ]
+
+            if let spanMenuAction = widgetSpanMenuAction(for: widget) {
+                actions.append(.divider)
+                actions.append(spanMenuAction)
+            }
+
+            actions.append(.divider)
+            actions.append(.action("Open Battery Settings") {
+                BatteriesService.shared.openInBatterySettings()
+            })
+            actions.append(.divider)
+            actions.append(widgetRemovalAction(for: widget))
             return actions
         case .nowPlaying:
             var actions: [ContextAction] = []
@@ -1035,32 +1075,13 @@ struct TileView: View {
                 })
             }
 
-            if isDockyPinnedTile || isDockyTrailingTile {
+            if let spanMenuAction = widgetSpanMenuAction(for: widget) {
                 actions.append(.divider)
-                actions.append(.submenu("Span", children: availableWidgetSpans.map { span in
-                    ContextAction.action(spanTitle(for: span), isOn: widget.span == span) {
-                        if isDockyPinnedTile {
-                            TileStore.shared.setPinnedWidgetSpan(tileID: tile.id, span: span)
-                        } else if isDockyTrailingTile {
-                            TileStore.shared.setTrailingWidgetSpan(tileID: tile.id, span: span)
-                        }
-                    }
-                }))
+                actions.append(spanMenuAction)
             }
 
             actions.append(.divider)
-            if isDockyPinnedTile || isDockyTrailingTile {
-                actions.append(.action("Remove from Dock") {
-                    removeDockyTile()
-                })
-            } else {
-                actions.append(.action("Remove Stack") {
-                    TileStore.shared.removeWidget(
-                        kind: widget.kind,
-                        ownerBundleIdentifier: widget.ownerBundleIdentifier
-                    )
-                })
-            }
+            actions.append(widgetRemovalAction(for: widget, nonDockyTitle: "Remove Stack"))
             return actions
         case .weather:
             var actions: [ContextAction] = [
@@ -1069,17 +1090,9 @@ struct TileView: View {
                 }
             ]
 
-            if isDockyPinnedTile || isDockyTrailingTile {
+            if let spanMenuAction = widgetSpanMenuAction(for: widget) {
                 actions.append(.divider)
-                actions.append(.submenu("Span", children: availableWidgetSpans.map { span in
-                    ContextAction.action(spanTitle(for: span), isOn: widget.span == span) {
-                        if isDockyPinnedTile {
-                            TileStore.shared.setPinnedWidgetSpan(tileID: tile.id, span: span)
-                        } else if isDockyTrailingTile {
-                            TileStore.shared.setTrailingWidgetSpan(tileID: tile.id, span: span)
-                        }
-                    }
-                }))
+                actions.append(spanMenuAction)
             }
 
             actions.append(.divider)
@@ -1087,10 +1100,69 @@ struct TileView: View {
                 WeatherService.shared.openInWeatherApp()
             })
             actions.append(.divider)
-            actions.append(.action("Remove from Dock") {
-                removeDockyTile()
-            })
+            actions.append(widgetRemovalAction(for: widget))
             return actions
+        }
+    }
+
+    private func widgetSpanMenuAction(for widget: WidgetTile) -> ContextAction? {
+        guard isDockyPinnedTile || isDockyTrailingTile else {
+            return nil
+        }
+
+        return .submenu("Span", children: availableWidgetSpans.map { span in
+            ContextAction.action(spanTitle(for: span), isOn: widget.span == span) {
+                applyWidgetSpan(span)
+            }
+        })
+    }
+
+    private func applyWidgetSpan(_ span: TileSpan) {
+        if isDockyPinnedTile {
+            TileStore.shared.setPinnedWidgetSpan(tileID: tile.id, span: span)
+        } else if isDockyTrailingTile {
+            TileStore.shared.setTrailingWidgetSpan(tileID: tile.id, span: span)
+        }
+    }
+
+    private func widgetRemovalAction(for widget: WidgetTile, nonDockyTitle: String = "Remove Widget") -> ContextAction {
+        if isDockyPinnedTile || isDockyTrailingTile {
+            return .action("Remove from Dock") {
+                removeDockyTile()
+            }
+        }
+
+        return .action(nonDockyTitle) {
+            TileStore.shared.removeWidget(
+                kind: widget.kind,
+                ownerBundleIdentifier: widget.ownerBundleIdentifier
+            )
+        }
+    }
+
+    private func appendDividerIfNeeded(to actions: inout [ContextAction]) {
+        guard !actions.isEmpty, actions.last?.kind != .divider else {
+            return
+        }
+
+        actions.append(.divider)
+    }
+
+    private func reminderCompletionTitle(for item: ReminderItemSnapshot, now: Date) -> String {
+        let detail = reminderCompletionDetail(for: item, now: now)
+        return detail.isEmpty ? item.title : "\(item.title) - \(detail)"
+    }
+
+    private func reminderCompletionDetail(for item: ReminderItemSnapshot, now: Date) -> String {
+        switch item.timingCategory(relativeTo: now) {
+        case .overdue:
+            return "overdue"
+        case .today:
+            return "today"
+        case .upcoming:
+            return "upcoming"
+        case .unscheduled:
+            return item.listTitle
         }
     }
 
@@ -1137,7 +1209,11 @@ struct TileView: View {
     private func handleWidgetTap(_ widget: WidgetTile) {
         switch widget.kind {
         case .calendar:
-            WorkspaceService.shared.activateOrOpen(bundleIdentifier: CalendarWidgetSupport.ownerBundleIdentifier)
+            WorkspaceService.shared.activateOrOpen(bundleIdentifier: WidgetOwnerBundleIdentifiers.calendar)
+        case .reminders:
+            WorkspaceService.shared.activateOrOpen(bundleIdentifier: WidgetOwnerBundleIdentifiers.reminders)
+        case .batteries:
+            BatteriesService.shared.openInBatterySettings()
         case .nowPlaying:
             Task {
                 await mediaPlayback.togglePlayPause(for: widget.ownerBundleIdentifier)
