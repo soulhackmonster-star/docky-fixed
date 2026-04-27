@@ -611,6 +611,30 @@ final class DockyPreferences: ObservableObject {
         }
     }
 
+    /// How Docky handles overflow when tiles exceed the screen on the dock axis.
+    @Published var overflowBehavior: DockOverflowBehavior {
+        didSet {
+            guard overflowBehavior != oldValue else { return }
+            defaults.set(overflowBehavior.rawValue, forKey: Keys.overflowBehavior)
+        }
+    }
+
+    /// Whether Docky's window hugs its content or stretches across the full dock axis.
+    @Published var windowAxisSizing: DockWindowAxisSizing {
+        didSet {
+            guard windowAxisSizing != oldValue else { return }
+            defaults.set(windowAxisSizing.rawValue, forKey: Keys.windowAxisSizing)
+        }
+    }
+
+    /// Whether Docky shows the divider between pinned apps and unpinned running apps.
+    @Published var showsActivePinnedSeparator: Bool {
+        didSet {
+            guard showsActivePinnedSeparator != oldValue else { return }
+            defaults.set(showsActivePinnedSeparator, forKey: Keys.showsActivePinnedSeparator)
+        }
+    }
+
     /// Shape used for the active app indicator.
     @Published var activeIndicatorShape: DockTileIndicatorShape {
         didSet {
