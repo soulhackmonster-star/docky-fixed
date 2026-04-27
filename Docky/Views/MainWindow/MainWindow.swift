@@ -7,11 +7,12 @@
 
 import AppKit
 import Combine
+import SwiftUI
 
 final class MainWindowContainerView: NSView {
     static let contentPadding: CGFloat = 2
 
-    private let contentView = MainWindowView()
+    private let contentView = ClickThroughHostingView(rootView: MainWindowView())
     private var trackingArea: NSTrackingArea?
 
     override init(frame frameRect: NSRect) {
@@ -25,8 +26,6 @@ final class MainWindowContainerView: NSView {
     }
 
     private func setup() {
-        wantsLayer = true
-
         contentView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(contentView)
 
