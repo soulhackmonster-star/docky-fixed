@@ -13,6 +13,7 @@ final class WindowSwitcherService: ObservableObject {
     @Published private(set) var isPresented = false
     @Published private(set) var windows: [AppWindow] = []
     @Published private(set) var selectedWindowIdentifier: String?
+    @Published private(set) var isContextMenuPresented = false
 
     private var hotKeyRef: EventHotKeyRef?
     private var hotKeyHandlerRef: EventHandlerRef?
@@ -96,6 +97,7 @@ final class WindowSwitcherService: ObservableObject {
 
     func dismiss() {
         isPresented = false
+        isContextMenuPresented = false
         windows = []
         selectedWindowIdentifier = nil
     }
@@ -107,6 +109,40 @@ final class WindowSwitcherService: ObservableObject {
             windows.firstIndex { $0.windowIdentifier == window.windowIdentifier }
         } ?? 0
         selectWindow(at: currentIndex + delta)
+    }
+
+    func selectWindow(withIdentifier identifier: String) {
+        guard windows.contains(where: { $0.windowIdentifier == identifier }) else {
+            return
+        }
+
+        selectedWindowIdentifier = identifier
+    }
+
+    func setContextMenuPresented(_ isPresented: Bool) {
+        isContextMenuPresented = isPresented
+
+        guard !isPresented else {
+            return
+        }
+
+        dismissIfShortcutReleased(flags: NSEvent.modifierFlags)
+    }
+
+    func removeWindow(withIdentifier identifier: String) {
+        guard let removedIndex = windows.firstIndex(where: { $0.windowIdentifier == identifier }) else {
+            return
+        }
+
+        windows.remove(at: removedIndex)
+
+        guard !windows.isEmpty else {
+            dismiss()
+            return
+        }
+
+        let nextIndex = min(removedIndex, windows.count - 1)
+        selectedWindowIdentifier = windows[nextIndex].windowIdentifier
     }
 
     private var selectedWindow: AppWindow? {
@@ -162,6 +198,7 @@ final class WindowSwitcherService: ObservableObject {
 
     private func handleModifierReleaseIfNeeded(flags: NSEvent.ModifierFlags) {
         guard isPresented else { return }
+        guard !isContextMenuPresented else { return }
 
         let requiredFlags = DockyPreferences.shared.windowSwitcherShortcut.modifierFlags
         let activeFlags = flags.intersection(KeyboardShortcut.supportedModifierFlags)
@@ -170,6 +207,18 @@ final class WindowSwitcherService: ObservableObject {
         }
 
         confirmSelection()
+    }
+
+    private func dismissIfShortcutReleased(flags: NSEvent.ModifierFlags) {
+        guard isPresented else { return }
+
+        let requiredFlags = DockyPreferences.shared.windowSwitcherShortcut.modifierFlags
+        let activeFlags = flags.intersection(KeyboardShortcut.supportedModifierFlags)
+        guard !requiredFlags.isEmpty, !activeFlags.isSuperset(of: requiredFlags) else {
+            return
+        }
+
+        dismiss()
     }
 
     private func selectWindow(at index: Int) {

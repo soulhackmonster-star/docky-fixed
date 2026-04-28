@@ -109,7 +109,7 @@ private struct WindowSwitcherOverlayView: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                Color.black.opacity(0.16)
+                Color.black.opacity(0)
                     .ignoresSafeArea()
 
                 ScrollViewReader { scrollProxy in
@@ -148,8 +148,8 @@ private struct WindowSwitcherCard: View {
     let isSelected: Bool
     let innerPreviewCornerRadius: CGFloat
     let cardCornerRadius: CGFloat
+    @ObservedObject private var switcher = WindowSwitcherService.shared
     @ObservedObject private var workspace = WorkspaceService.shared
-    @ObservedObject private var preferences = DockyPreferences.shared
 
     private let previewWidth: CGFloat = 180
     private let previewHeight: CGFloat = 102
@@ -185,6 +185,17 @@ private struct WindowSwitcherCard: View {
                         .strokeBorder(isSelected ? .white.opacity(0.28) : .white.opacity(0.0), lineWidth: 1)
                 }
         }
+        .background {
+            ContextActionMenuPresenter(
+                actionProvider: contextActions(modifierFlags:),
+                onPresentationChanged: switcher.setContextMenuPresented
+            )
+        }
+        .contentShape(RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
+        .onHover { isHovering in
+            guard isHovering else { return }
+            switcher.selectWindow(withIdentifier: window.windowIdentifier)
+        }
         .animation(.easeInOut(duration: 0.14), value: isSelected)
     }
 
@@ -206,12 +217,34 @@ private struct WindowSwitcherCard: View {
         .clipShape(RoundedRectangle(cornerRadius: innerPreviewCornerRadius/4, style: .continuous))
     }
 
-    private var icon: NSImage {
-        if let overrideURL = preferences.effectiveAppIconOverrideURL(forBundleIdentifier: window.bundleIdentifier),
-           let overrideImage = IconCacheService.shared.image(forImageFileURL: overrideURL) {
-            return overrideImage
-        }
-
-        return IconCacheService.shared.icon(forBundleIdentifier: window.bundleIdentifier)
+    private func contextActions(modifierFlags: NSEvent.ModifierFlags) -> [ContextAction] {
+        return [
+            .action("Focus Window") {
+                switcher.dismiss()
+                _ = workspace.focus(window: window)
+            },
+            .action("Minimize Window") {
+                switcher.dismiss()
+                _ = workspace.minimize(window: window)
+            },
+            .action("Close Window", isDestructive: true) {
+                if workspace.close(window: window) {
+                    switcher.removeWindow(withIdentifier: window.windowIdentifier)
+                }
+            },
+            .divider,
+            .action("Focus App") {
+                switcher.dismiss()
+                workspace.focusApplication(bundleIdentifier: window.bundleIdentifier)
+            },
+            .action("Hide App") {
+                switcher.dismiss()
+                workspace.hide(bundleIdentifier: window.bundleIdentifier)
+            },
+            .action("Quit") {
+                switcher.dismiss()
+                workspace.quit(bundleIdentifier: window.bundleIdentifier)
+            }
+        ]
     }
 }

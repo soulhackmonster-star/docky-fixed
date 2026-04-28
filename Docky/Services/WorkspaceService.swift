@@ -210,6 +210,56 @@ final class WorkspaceService: ObservableObject {
         return restored && raised
     }
 
+    func focusApplication(bundleIdentifier: String) {
+        guard let runningApp = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).first else {
+            return
+        }
+
+        runningApp.unhide()
+        runningApp.activate(options: [.activateAllWindows])
+    }
+
+    @discardableResult
+    func minimize(window: AppWindow) -> Bool {
+        guard PermissionsService.shared.accessibility == .granted else {
+            PermissionsService.shared.presentPermissionAlert(for: .accessibility, actionTitle: "minimize app windows")
+            return false
+        }
+
+        guard let (_, windowElement) = appWindowTarget(for: window) else {
+            refreshMinimizedWindows()
+            return false
+        }
+
+        let minimized = AXUIElementSetAttributeValue(
+            windowElement,
+            kAXMinimizedAttribute as CFString,
+            kCFBooleanTrue
+        ) == .success
+
+        refreshMinimizedWindows()
+        return minimized
+    }
+
+    @discardableResult
+    func close(window: AppWindow) -> Bool {
+        guard PermissionsService.shared.accessibility == .granted else {
+            PermissionsService.shared.presentPermissionAlert(for: .accessibility, actionTitle: "close app windows")
+            return false
+        }
+
+        guard let (_, windowElement) = appWindowTarget(for: window) else {
+            refreshMinimizedWindows()
+            return false
+        }
+
+        let closed = AXUIElementPerformAction(windowElement, axCloseAction) == .success
+            || closeWindowViaButton(windowElement)
+
+        refreshMinimizedWindows()
+        return closed
+    }
+
     private func openApplication(at appURL: URL) {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
@@ -229,12 +279,7 @@ final class WorkspaceService: ObservableObject {
     }
 
     func showAllWindows(bundleIdentifier: String) {
-        guard let runningApp = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).first else {
-            return
-        }
-
-        runningApp.unhide()
-        runningApp.activate(options: [.activateAllWindows])
+        focusApplication(bundleIdentifier: bundleIdentifier)
     }
 
     @discardableResult
@@ -277,7 +322,7 @@ final class WorkspaceService: ObservableObject {
         }
 
         let closed = AXUIElementPerformAction(windowElement, axCloseAction) == .success
-            || closeMinimizedWindowViaButton(windowElement)
+            || closeWindowViaButton(windowElement)
 
         refreshMinimizedWindows()
         return closed
@@ -582,7 +627,7 @@ final class WorkspaceService: ObservableObject {
         return (runningApp, windowElement)
     }
 
-    private func closeMinimizedWindowViaButton(_ windowElement: AXUIElement) -> Bool {
+    private func closeWindowViaButton(_ windowElement: AXUIElement) -> Bool {
         guard let closeButtonValue = valueAttribute(kAXCloseButtonAttribute as CFString, of: windowElement) else {
             return false
         }
