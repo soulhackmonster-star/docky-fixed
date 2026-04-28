@@ -145,7 +145,7 @@ private struct DockEditorGalleryItem: Equatable, Identifiable {
 
     nonisolated static let allItems: [DockEditorGalleryItem] = WidgetCatalog.paletteRegistrations.map(Self.makeWidgetItem)
         + [makeSmartStackItem()]
-        + [makeUtilityItem(.spacer), makeUtilityItem(.divider)]
+        + [makeUtilityItem(.launchpad), makeUtilityItem(.spacer), makeUtilityItem(.divider)]
 
     nonisolated private static func makeWidgetItem(registration: WidgetRegistration) -> Self {
         let paletteItem = DockEditPaletteItem.widget(
@@ -208,6 +208,8 @@ private struct DockEditorGalleryItem: Equatable, Identifiable {
 
     nonisolated private static func title(for item: DockEditPaletteItem) -> String {
         switch item {
+        case .launchpad:
+            "Launchpad"
         case .spacer:
             "Spacer"
         case .divider:
@@ -221,6 +223,8 @@ private struct DockEditorGalleryItem: Equatable, Identifiable {
 
     nonisolated private static func subtitle(for item: DockEditPaletteItem) -> String {
         switch item {
+        case .launchpad:
+            "Shows a fullscreen launcher with all installed apps on a blurred backdrop."
         case .spacer:
             "Adds breathing room between pinned tiles or folders."
         case .divider:
@@ -253,6 +257,8 @@ private struct DockEditorGalleryItem: Equatable, Identifiable {
 
     nonisolated private static func iconName(for item: DockEditPaletteItem) -> String {
         switch item {
+        case .launchpad:
+            "square.grid.3x3.fill"
         case .spacer:
             "rectangle.split.3x1"
         case .divider:
@@ -795,6 +801,16 @@ private struct DockEditorItemPreview: View {
 
         ZStack {
             switch item.paletteItem {
+            case .launchpad:
+                AppTileView(
+                    tile: AppTile(
+                        bundleIdentifier: LaunchpadTile.spotlightBundleIdentifier,
+                        displayName: item.title
+                    ),
+                    clipShape: preferences.tileClipShape,
+                    transparencyCompensationInset: 0
+                )
+                .frame(width: previewSize.width, height: previewSize.height)
             case .widget(let ownerBundleIdentifier, let kind):
                 WidgetTileView(
                     tile: WidgetTile(
@@ -834,6 +850,8 @@ private struct DockEditorItemPreview: View {
 
     private var size: CGSize {
         switch item.paletteItem {
+        case .launchpad:
+            return CGSize(width: scale.tileHeight, height: scale.tileHeight)
         case .widget:
             let span = CGFloat((item.resolvedSpan(selectedSpan: selectedSpan) ?? .one).rawValue)
             return CGSize(

@@ -41,7 +41,7 @@ final class MenuCatalogService: ObservableObject {
         switch tile.content {
         case .app, .folder, .trash:
             break
-        case .minimizedWindow, .appFolder, .widget, .smartStack, .spacer, .divider:
+        case .minimizedWindow, .appFolder, .launchpad, .widget, .smartStack, .spacer, .divider:
             return nil
         }
 
@@ -298,6 +298,20 @@ final class MenuCatalogService: ObservableObject {
                 canTogglePin: false,
                 isFinder: false
             )
+        case .launchpad(let launchpad):
+            return CatalogActionContext(
+                tile: tile,
+                modifierFlags: modifierFlags,
+                bundleIdentifier: nil,
+                displayName: launchpad.title,
+                appBundlePath: nil,
+                folderPath: nil,
+                filePath: nil,
+                isRunning: false,
+                isPinned: true,
+                canTogglePin: false,
+                isFinder: false
+            )
         case .trash:
             return CatalogActionContext(
                 tile: tile,
@@ -335,6 +349,8 @@ final class MenuCatalogService: ObservableObject {
         case .minimizedWindow:
             fatalError("Unsupported tile type for context menu catalog")
         case .appFolder:
+            fatalError("Unsupported tile type for context menu catalog")
+        case .launchpad:
             fatalError("Unsupported tile type for context menu catalog")
         case .folder: return .folder
         case .trash: return .trash

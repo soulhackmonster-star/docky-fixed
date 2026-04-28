@@ -8,6 +8,7 @@ import Foundation
 import CoreGraphics
 
 enum DockEditPaletteItem: Equatable, Identifiable {
+    case launchpad
     case spacer
     case divider
     case widget(ownerBundleIdentifier: String, kind: WidgetKind)
@@ -15,6 +16,8 @@ enum DockEditPaletteItem: Equatable, Identifiable {
 
     var id: String {
         switch self {
+        case .launchpad:
+            "launchpad"
         case .spacer:
             "spacer"
         case .divider:

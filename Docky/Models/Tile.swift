@@ -19,6 +19,7 @@ enum TileContent: Equatable {
     case app(AppTile)
     case minimizedWindow(MinimizedWindowTile)
     case appFolder(AppFolderTile)
+    case launchpad(LaunchpadTile)
     case widget(WidgetTile)
     case smartStack(SmartStackTile)
     case folder(FolderTile)
@@ -73,6 +74,18 @@ struct AppFolderTile: Equatable {
 
     nonisolated var bundleIdentifiers: [String] {
         apps.map(\.bundleIdentifier)
+    }
+}
+
+struct LaunchpadTile: Equatable {
+    nonisolated static let spotlightBundleIdentifier = "com.apple.Spotlight"
+
+    let identifier: String
+    let title: String
+
+    nonisolated init(identifier: String, title: String = "Launchpad") {
+        self.identifier = identifier
+        self.title = title
     }
 }
 

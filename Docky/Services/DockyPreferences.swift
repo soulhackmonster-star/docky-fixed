@@ -17,6 +17,7 @@ import Foundation
 enum PinnedTileItemKind: String, Codable, Equatable {
     case app
     case appFolder
+    case launchpad
     case widget
     case smartStack
     case spacer
@@ -90,6 +91,21 @@ struct PinnedTileItem: Codable, Equatable, Identifiable {
             widgetKind: kind,
             widgetOwnerBundleIdentifier: ownerBundleIdentifier,
             widgetSpan: span,
+            hiddenWidgetOwnerBundleIdentifiers: []
+        )
+    }
+
+    nonisolated static func launchpad(id: String = "custom:\(UUID().uuidString)") -> Self {
+        Self(
+            id: id,
+            kind: .launchpad,
+            bundleIdentifier: nil,
+            folderDisplayName: nil,
+            folderBundleIdentifiers: [],
+            folderContentViewMode: nil,
+            widgetKind: nil,
+            widgetOwnerBundleIdentifier: nil,
+            widgetSpan: nil,
             hiddenWidgetOwnerBundleIdentifiers: []
         )
     }
@@ -680,6 +696,24 @@ final class DockyPreferences: ObservableObject {
         }
     }
 
+    /// Preferred column count for the Launchpad overlay grid.
+    @Published var launchpadGridColumnCount: Int {
+        didSet {
+            let clampedValue = max(1, launchpadGridColumnCount)
+            guard clampedValue != oldValue else {
+                launchpadGridColumnCount = clampedValue
+                return
+            }
+
+            if launchpadGridColumnCount != clampedValue {
+                launchpadGridColumnCount = clampedValue
+                return
+            }
+
+            defaults.set(clampedValue, forKey: Keys.launchpadGridColumnCount)
+        }
+    }
+
     /// Docky-owned ordered pinned app bundle identifiers.
     @Published var pinnedAppBundleIdentifiers: [String] {
         didSet {
@@ -821,6 +855,7 @@ final class DockyPreferences: ObservableObject {
         static let activeIndicatorColor = "docky.activeIndicatorColor"
         static let appIconOverrides = "docky.appIconOverrides"
         static let showsGroupedOpenedAppsInDock = "docky.showsGroupedOpenedAppsInDock"
+        static let launchpadGridColumnCount = "docky.launchpadGridColumnCount"
         static let pinnedAppBundleIdentifiers = "docky.pinnedAppBundleIdentifiers"
         static let pinnedItems = "docky.pinnedItems"
         static let widgetPlacements = "docky.widgetPlacements"
@@ -849,6 +884,7 @@ final class DockyPreferences: ObservableObject {
         static let activeIndicatorColor: DockColor? = nil
         static let appIconOverrides: [AppIconOverride] = []
         static let showsGroupedOpenedAppsInDock = true
+        static let launchpadGridColumnCount = 7
         static let pinnedAppBundleIdentifiers: [String] = []
         static let pinnedItems: [PinnedTileItem] = []
         static let widgetPlacements: [WidgetPlacement] = []
@@ -878,6 +914,7 @@ final class DockyPreferences: ObservableObject {
         let storedActiveIndicatorColor = defaults.data(forKey: Keys.activeIndicatorColor)
         let storedAppIconOverrides = defaults.data(forKey: Keys.appIconOverrides)
         let storedShowsGroupedOpenedAppsInDock = defaults.object(forKey: Keys.showsGroupedOpenedAppsInDock) as? Bool
+        let storedLaunchpadGridColumnCount = defaults.object(forKey: Keys.launchpadGridColumnCount) as? Int
         let storedPinnedAppBundleIdentifiers = defaults.stringArray(forKey: Keys.pinnedAppBundleIdentifiers)
         let storedPinnedItems = defaults.data(forKey: Keys.pinnedItems)
         let storedWidgetPlacements = defaults.data(forKey: Keys.widgetPlacements)
@@ -906,6 +943,7 @@ final class DockyPreferences: ObservableObject {
         self.activeIndicatorColor = Self.decodeColor(from: storedActiveIndicatorColor) ?? DefaultValues.activeIndicatorColor
         self.appIconOverrides = Self.decodeAppIconOverrides(from: storedAppIconOverrides) ?? DefaultValues.appIconOverrides
         self.showsGroupedOpenedAppsInDock = storedShowsGroupedOpenedAppsInDock ?? DefaultValues.showsGroupedOpenedAppsInDock
+        self.launchpadGridColumnCount = max(storedLaunchpadGridColumnCount ?? DefaultValues.launchpadGridColumnCount, 1)
         self.pinnedAppBundleIdentifiers = initialPinnedAppBundleIdentifiers
         self.pinnedItems = initialPinnedItems
         self.widgetPlacements = Self.decodeWidgetPlacements(from: storedWidgetPlacements) ?? DefaultValues.widgetPlacements
@@ -934,6 +972,7 @@ final class DockyPreferences: ObservableObject {
         activeIndicatorColor = DefaultValues.activeIndicatorColor
         appIconOverrides = DefaultValues.appIconOverrides
         showsGroupedOpenedAppsInDock = DefaultValues.showsGroupedOpenedAppsInDock
+        launchpadGridColumnCount = DefaultValues.launchpadGridColumnCount
         appWidgetDisplays = DefaultValues.appWidgetDisplays
     }
 

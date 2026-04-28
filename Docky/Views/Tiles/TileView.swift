@@ -47,6 +47,13 @@ struct TileView: View {
                 return appContextActions(for: app, modifierFlags: modifierFlags, baseActions: catalogActions)
             case .trash:
                 return catalogActions
+            case .launchpad:
+                var actions = catalogActions
+                if !customDockyTileActions.isEmpty {
+                    actions.append(.divider)
+                    actions.append(contentsOf: customDockyTileActions)
+                }
+                return actions
             case .folder:
                 var actions = folderPresentationContextActions + [.divider] + catalogActions
                 if isDockyTrailingTile {
@@ -68,6 +75,17 @@ struct TileView: View {
             return minimizedWindowContextActions(for: window, modifierFlags: modifierFlags)
         case .appFolder(let folder):
             return appFolderContextActions(for: folder)
+        case .launchpad:
+            var actions = [ContextAction.action("Open Launchpad") {
+                LaunchpadOverlayService.shared.present()
+            }]
+
+            if !customDockyTileActions.isEmpty {
+                actions.append(.divider)
+                actions.append(contentsOf: customDockyTileActions)
+            }
+
+            return actions
         case .widget(let widget):
             return widgetContextActions(for: widget)
         case .smartStack(let stack):
@@ -222,6 +240,13 @@ struct TileView: View {
             })
         }
 
+        if case .launchpad = tile.content {
+            actions.append(.divider)
+            actions.append(.action("Remove from Dock") {
+                removeDockyTile()
+            })
+        }
+
         return actions
     }
 
@@ -352,7 +377,7 @@ struct TileView: View {
                     )
                     .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
             }
-        case .appFolder, .widget, .smartStack:
+        case .appFolder, .launchpad, .widget, .smartStack:
             GeometryReader { proxy in
                 content
                     .frame(
@@ -406,7 +431,7 @@ struct TileView: View {
             folder.apps.contains { app in
                 workspace.isRunning(bundleIdentifier: app.bundleIdentifier)
             }
-        case .widget, .smartStack, .folder, .spacer, .divider, .trash:
+        case .launchpad, .widget, .smartStack, .folder, .spacer, .divider, .trash:
             false
         }
     }
@@ -495,7 +520,7 @@ struct TileView: View {
             tileChromeInset
         case .appFolder, .widget, .smartStack, .folder, .trash:
             tileChromeInset
-        case .app, .minimizedWindow, .spacer, .divider:
+        case .app, .launchpad, .minimizedWindow, .spacer, .divider:
             0
         }
     }
@@ -608,6 +633,15 @@ struct TileView: View {
                 cornerRadius: nonAppTileCornerRadius,
                 suppressesGroupedOpenedBackdrop: isDragging
             )
+        case .launchpad(let launchpad):
+            AppTileView(
+                tile: AppTile(
+                    bundleIdentifier: LaunchpadTile.spotlightBundleIdentifier,
+                    displayName: launchpad.title
+                ),
+                clipShape: preferences.tileClipShape,
+                transparencyCompensationInset: 0
+            )
         case .widget(let widget):
             WidgetTileView(
                 tile: widget,
@@ -648,6 +682,8 @@ struct TileView: View {
             window.windowTitle
         case .appFolder(let folder):
             folder.displayName
+        case .launchpad(let launchpad):
+            launchpad.title
         case .widget(let widget):
             widget.title
         case .smartStack(let stack):
@@ -713,6 +749,9 @@ struct TileView: View {
             }
 
             isAppFolderPopoverPresented = true
+        case .launchpad:
+            isTooltipPresented = false
+            LaunchpadOverlayService.shared.toggle()
         case .widget(let widget):
             isTooltipPresented = false
             handleWidgetTap(widget)

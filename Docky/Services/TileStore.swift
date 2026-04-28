@@ -364,6 +364,8 @@ final class TileStore: ObservableObject {
                 apps: folderApps
             )
             return true
+        case .launchpad:
+            return false
         case .appFolder:
             guard !targetItem.folderBundleIdentifiers.contains(bundleIdentifier) else {
                 return false
@@ -665,6 +667,8 @@ final class TileStore: ObservableObject {
         switch kind {
         case .app, .appFolder, .widget:
             return
+        case .launchpad:
+            item = .launchpad()
         case .smartStack:
             item = .smartStack()
         case .spacer:
@@ -789,6 +793,8 @@ final class TileStore: ObservableObject {
             return item
         case .pinned(let item):
             switch item.kind {
+            case .launchpad:
+                return nil
             case .widget:
                 guard let widgetKind = item.widgetKind,
                       let ownerBundleIdentifier = item.widgetOwnerBundleIdentifier else {
@@ -1560,6 +1566,11 @@ final class TileStore: ObservableObject {
                     contentViewMode: item.folderContentViewMode ?? .grid
                 ))
             )
+        case .launchpad:
+            return Tile(
+                id: Self.pinnedTileID(for: item),
+                content: .launchpad(LaunchpadTile(identifier: item.id))
+            )
         case .widget:
             guard let widgetKind = item.widgetKind,
                   let ownerBundleIdentifier = item.widgetOwnerBundleIdentifier else {
@@ -1941,6 +1952,8 @@ final class TileStore: ObservableObject {
                 bundleIdentifiers: folder.bundleIdentifiers,
                 contentViewMode: folder.contentViewMode
             )
+        case .launchpad(let launchpad):
+            return .launchpad(id: launchpad.identifier)
         case .widget, .smartStack:
             return nil
         case .spacer:
@@ -1990,12 +2003,20 @@ final class TileStore: ObservableObject {
         switch imported.kind {
         case .app:
             return existing.bundleIdentifier == imported.bundleIdentifier
+        case .launchpad:
+            return existing.id == imported.id
         case .spacer, .divider:
             return existing.id == imported.id
         case .appFolder:
             return existing.id == imported.id
         case .widget, .smartStack:
             return false
+        }
+    }
+
+    func launchpadApps() -> [AppTile] {
+        Self.installedApplications().map { app in
+            AppTile(bundleIdentifier: app.bundleIdentifier, displayName: app.displayName)
         }
     }
 
@@ -2009,7 +2030,7 @@ final class TileStore: ObservableObject {
             )
         case .trash:
             return .trash()
-        case .widget, .smartStack, .app, .appFolder, .spacer, .divider, .minimizedWindow:
+        case .launchpad, .widget, .smartStack, .app, .appFolder, .spacer, .divider, .minimizedWindow:
             return nil
         }
     }

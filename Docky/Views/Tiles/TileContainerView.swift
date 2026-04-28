@@ -385,6 +385,11 @@ struct TileContainerView: View {
         }
 
         switch paletteDrag.item {
+        case .launchpad:
+            return Tile(
+                id: "editor-preview:launchpad",
+                content: .launchpad(LaunchpadTile(identifier: "editor-preview:launchpad"))
+            )
         case .spacer:
             return Tile(id: "editor-preview:spacer", content: .spacer)
         case .divider:
@@ -729,7 +734,7 @@ struct TileContainerView: View {
             return false
         case .appFolder:
             return isPinnedReorderable(tileID: tile.id)
-        case .widget, .smartStack, .spacer, .divider:
+        case .launchpad, .widget, .smartStack, .spacer, .divider:
             return editMode.isActive && (isPinnedReorderable(tileID: tile.id) || isTrailingReorderable(tileID: tile.id))
         case .folder, .trash:
             return editMode.isActive && isTrailingReorderable(tileID: tile.id)
@@ -750,6 +755,8 @@ struct TileContainerView: View {
 
     private func makePinnedItem(from paletteItem: DockEditPaletteItem, widgetSpan: TileSpan?) -> PinnedTileItem? {
         return switch paletteItem {
+        case .launchpad:
+            PinnedTileItem.launchpad()
         case .spacer:
             PinnedTileItem.spacer()
         case .divider:
@@ -775,6 +782,8 @@ struct TileContainerView: View {
         }
 
         return switch paletteDrag.item {
+        case .launchpad:
+            nil
         case .spacer:
             TrailingTileItem.spacer()
         case .divider:
@@ -1273,7 +1282,7 @@ struct TileContainerView: View {
                 guard !folder.bundleIdentifiers.contains(bundleIdentifier) else {
                     continue
                 }
-            case .widget, .smartStack, .folder, .spacer, .divider, .trash:
+            case .launchpad, .widget, .smartStack, .folder, .spacer, .divider, .trash:
                 continue
             }
 
