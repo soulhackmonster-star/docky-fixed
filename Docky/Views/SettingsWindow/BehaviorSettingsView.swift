@@ -33,6 +33,50 @@ struct BehaviorSettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.vertical, 4)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Display")
+                            .font(.headline)
+
+                        Spacer()
+
+                        Picker("Display", selection: $preferences.windowDisplayTarget) {
+                            ForEach(DockWindowDisplayTarget.allCases) { target in
+                                Text(target.title).tag(target)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                    }
+
+                    Text("Docky uses a single main window. Choose whether it stays on the primary display or follows the display containing the pointer.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 4)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Spaces")
+                            .font(.headline)
+
+                        Spacer()
+
+                        Picker("Spaces", selection: $preferences.windowSpaceBehavior) {
+                            ForEach(DockWindowSpaceBehavior.allCases) { behavior in
+                                Text(behavior.title).tag(behavior)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                    }
+
+                    Text("Choose whether Docky appears only in the active Space or joins every Space, including fullscreen auxiliary presentation.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 4)
             }
 
             Section("Visibility") {

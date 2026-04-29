@@ -88,11 +88,14 @@ final class MainWindow: NSWindow {
     private let minimumWidth: CGFloat = 120
     private var cancellables: Set<AnyCancellable> = []
     private var hideWorkItem: DispatchWorkItem?
+    private var globalPointerMonitor: Any?
+    private var localPointerMonitor: Any?
     private var isPointerInsideWindow = false
     private var activeInteractionCount = 0
     private var visibilityState: VisibilityState
     private var hasCompletedSetup = false
     private var hasResolvedInitialFrame = false
+    private var lastPointerScreenFrame: CGRect?
 
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
         visibilityState = DockyPreferences.shared.autohidesWindow ? .hidden : .visible
@@ -113,8 +116,21 @@ final class MainWindow: NSWindow {
         isOpaque = false
         isMovableByWindowBackground = false
         alphaValue = 0
+        applyCollectionBehavior()
         observeFrameInputs()
+        observeScreenAndSpaceInputs()
+        observeWindowPlacementInputs()
         observeVisibilityInputs()
+        updatePointerScreenMonitoring()
+    }
+
+    deinit {
+        if let globalPointerMonitor {
+            NSEvent.removeMonitor(globalPointerMonitor)
+        }
+        if let localPointerMonitor {
+            NSEvent.removeMonitor(localPointerMonitor)
+        }
     }
 
     override func order(_ place: NSWindow.OrderingMode, relativeTo otherWin: Int) {
@@ -142,6 +158,7 @@ final class MainWindow: NSWindow {
             preferences.$overflowBehavior.map { _ in () }.eraseToAnyPublisher(),
             preferences.$windowAxisSizing.map { _ in () }.eraseToAnyPublisher(),
             preferences.$windowPosition.map { _ in () }.eraseToAnyPublisher(),
+            preferences.$windowDisplayTarget.map { _ in () }.eraseToAnyPublisher(),
         ]
         Publishers.MergeMany(layoutSignals)
             .receive(on: DispatchQueue.main)
@@ -169,6 +186,33 @@ final class MainWindow: NSWindow {
             .store(in: &cancellables)
     }
 
+    private func observeScreenAndSpaceInputs() {
+        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
+            .merge(with: NotificationCenter.default.publisher(for: NSWorkspace.activeSpaceDidChangeNotification))
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.applyCurrentFrame(animated: false)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func observeWindowPlacementInputs() {
+        preferences.$windowSpaceBehavior
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.applyCollectionBehavior()
+            }
+            .store(in: &cancellables)
+
+        preferences.$windowDisplayTarget
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.lastPointerScreenFrame = nil
+                self?.updatePointerScreenMonitoring()
+            }
+            .store(in: &cancellables)
+    }
+
     private func observeVisibilityInputs() {
         preferences.$autohidesWindow
             .receive(on: DispatchQueue.main)
@@ -176,6 +220,42 @@ final class MainWindow: NSWindow {
                 self?.handleAutohideChanged(autohidesWindow)
             }
             .store(in: &cancellables)
+    }
+
+    private func applyCollectionBehavior() {
+        collectionBehavior = preferences.windowSpaceBehavior.collectionBehavior(includesFullScreenAuxiliary: true)
+    }
+
+    private func updatePointerScreenMonitoring() {
+        if let globalPointerMonitor {
+            NSEvent.removeMonitor(globalPointerMonitor)
+            self.globalPointerMonitor = nil
+        }
+        if let localPointerMonitor {
+            NSEvent.removeMonitor(localPointerMonitor)
+            self.localPointerMonitor = nil
+        }
+
+        guard preferences.windowDisplayTarget == .displayContainingPointer else { return }
+
+        let pointerEvents: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel]
+        globalPointerMonitor = NSEvent.addGlobalMonitorForEvents(matching: pointerEvents) { [weak self] _ in
+            self?.handlePointerScreenChangeIfNeeded()
+        }
+        localPointerMonitor = NSEvent.addLocalMonitorForEvents(matching: pointerEvents) { [weak self] event in
+            self?.handlePointerScreenChangeIfNeeded()
+            return event
+        }
+    }
+
+    private func handlePointerScreenChangeIfNeeded() {
+        guard preferences.windowDisplayTarget == .displayContainingPointer else { return }
+        let nextScreenFrame = targetScreen()?.frame
+        guard nextScreenFrame != lastPointerScreenFrame else { return }
+        lastPointerScreenFrame = nextScreenFrame
+        DispatchQueue.main.async { [weak self] in
+            self?.applyCurrentFrame(animated: false)
+        }
     }
 
     func pointerDidEnterWindow() {
@@ -248,7 +328,8 @@ final class MainWindow: NSWindow {
     }
 
     private func applyCurrentFrame(animated: Bool, duration: TimeInterval?) {
-        let screenBounds = screen?.frame ?? NSScreen.main?.frame ?? .zero
+        let screenBounds = targetScreen()?.frame ?? screen?.frame ?? NSScreen.main?.frame ?? .zero
+        lastPointerScreenFrame = screenBounds
         let contentPadding = MainWindowContainerView.contentPadding
         let position = preferences.windowPosition.resolved(systemOrientation: dockSettings.orientation)
         let baseIconHeight = dockSettings.magnification ? dockSettings.largeSize : dockSettings.tileSize
@@ -483,6 +564,19 @@ final class MainWindow: NSWindow {
                 x: screenBounds.minX + (screenBounds.width - size.width) / 2,
                 y: hidden ? screenBounds.minY - size.height + hiddenRevealThickness : screenBounds.minY
             )
+        }
+    }
+
+    private func targetScreen() -> NSScreen? {
+        switch preferences.windowDisplayTarget {
+        case .primaryDisplay:
+            return NSScreen.screens.first ?? NSScreen.main
+        case .displayContainingPointer:
+            let mouseLocation = NSEvent.mouseLocation
+            return NSScreen.screens.first { $0.frame.contains(mouseLocation) }
+                ?? screen
+                ?? NSScreen.main
+                ?? NSScreen.screens.first
         }
     }
 }

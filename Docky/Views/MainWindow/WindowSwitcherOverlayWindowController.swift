@@ -11,6 +11,7 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
     private weak var mainWindow: MainWindow?
     private var cancellables: Set<AnyCancellable> = []
     private let animationDuration: TimeInterval = 0.18
+    private let preferences = DockyPreferences.shared
 
     init(mainWindow: MainWindow) {
         self.mainWindow = mainWindow
@@ -24,6 +25,7 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
         prepareOverlayWindow()
         observeOverlayPresentation()
         observeMainWindow()
+        observeSpaceBehavior()
     }
 
     @available(*, unavailable)
@@ -79,8 +81,18 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
         guard let window else { return }
 
         updateFrame()
+        window.collectionBehavior = preferences.windowSpaceBehavior.collectionBehavior(includesFullScreenAuxiliary: true)
         configureHiddenWindowState()
         window.orderFront(nil)
+    }
+
+    private func observeSpaceBehavior() {
+        preferences.$windowSpaceBehavior
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] behavior in
+                self?.window?.collectionBehavior = behavior.collectionBehavior(includesFullScreenAuxiliary: true)
+            }
+            .store(in: &cancellables)
     }
 
     private func configureHiddenWindowState() {
@@ -121,7 +133,6 @@ private final class WindowSwitcherOverlayWindow: NSWindow {
         backgroundColor = .clear
         hasShadow = false
         level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 1)
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
     }
 
     override var canBecomeKey: Bool { true }

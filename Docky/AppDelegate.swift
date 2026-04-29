@@ -296,6 +296,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             "windowTintOpacity: \(preferences.effectiveWindowTintOpacity)",
             "windowBackgroundImagePath: \(preferences.windowBackgroundImagePath ?? "none")",
             "windowPosition: \(preferences.windowPosition.rawValue)",
+            "windowDisplayTarget: \(preferences.windowDisplayTarget.rawValue)",
+            "windowSpaceBehavior: \(preferences.windowSpaceBehavior.rawValue)",
             "autohidesWindow: \(preferences.autohidesWindow)",
             "autohideWindowDelay: \(preferences.autohideWindowDelay)",
             "showsActivePinnedSeparator: \(preferences.showsActivePinnedSeparator)",

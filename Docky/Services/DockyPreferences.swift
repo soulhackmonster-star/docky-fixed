@@ -335,6 +335,47 @@ enum DockWindowPosition: String, CaseIterable, Identifiable {
     }
 }
 
+enum DockWindowDisplayTarget: String, CaseIterable, Identifiable {
+    case primaryDisplay
+    case displayContainingPointer
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .primaryDisplay: "Primary Display"
+        case .displayContainingPointer: "Display With Pointer"
+        }
+    }
+}
+
+enum DockWindowSpaceBehavior: String, CaseIterable, Identifiable {
+    case activeSpace
+    case allSpaces
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .activeSpace: "Active Space"
+        case .allSpaces: "All Spaces"
+        }
+    }
+
+    func collectionBehavior(includesFullScreenAuxiliary: Bool) -> NSWindow.CollectionBehavior {
+        switch self {
+        case .activeSpace:
+            return NSWindow.CollectionBehavior(arrayLiteral: .moveToActiveSpace, .stationary, .ignoresCycle)
+        case .allSpaces:
+            var behavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+            if includesFullScreenAuxiliary {
+                behavior.insert(.fullScreenAuxiliary)
+            }
+            return behavior
+        }
+    }
+}
+
 enum DockOverflowBehavior: String, CaseIterable, Identifiable {
     case rescale
     case scroll
@@ -601,6 +642,22 @@ final class DockyPreferences: ObservableObject {
             guard windowPosition != oldValue else { return }
             defaults.set(windowPosition.rawValue, forKey: Keys.windowPosition)
             syncSystemDockPositionIfNeeded()
+        }
+    }
+
+    /// Which display owns Docky's single main window.
+    @Published var windowDisplayTarget: DockWindowDisplayTarget {
+        didSet {
+            guard windowDisplayTarget != oldValue else { return }
+            defaults.set(windowDisplayTarget.rawValue, forKey: Keys.windowDisplayTarget)
+        }
+    }
+
+    /// Whether Docky's windows stay in the active Space or join all Spaces.
+    @Published var windowSpaceBehavior: DockWindowSpaceBehavior {
+        didSet {
+            guard windowSpaceBehavior != oldValue else { return }
+            defaults.set(windowSpaceBehavior.rawValue, forKey: Keys.windowSpaceBehavior)
         }
     }
 
@@ -908,6 +965,8 @@ final class DockyPreferences: ObservableObject {
         static let disablesGlassLook = "docky.disablesGlassLook"
         static let windowBackgroundImagePath = "docky.windowBackgroundImagePath"
         static let windowPosition = "docky.windowPosition"
+        static let windowDisplayTarget = "docky.windowDisplayTarget"
+        static let windowSpaceBehavior = "docky.windowSpaceBehavior"
         static let autohidesWindow = "docky.autohidesWindow"
         static let autohideWindowDelay = "docky.autohideWindowDelay"
         static let hidesSystemDock = "docky.hidesSystemDock"
@@ -943,6 +1002,8 @@ final class DockyPreferences: ObservableObject {
         static let disablesGlassLook = false
         static let windowBackgroundImagePath: String? = nil
         static let windowPosition: DockWindowPosition = .system
+        static let windowDisplayTarget: DockWindowDisplayTarget = .primaryDisplay
+        static let windowSpaceBehavior: DockWindowSpaceBehavior = .allSpaces
         static let autohidesWindow = false
         static let autohideWindowDelay: TimeInterval = 0.5
         static let hidesSystemDock = true
@@ -979,6 +1040,8 @@ final class DockyPreferences: ObservableObject {
         let storedDisablesGlassLook = defaults.object(forKey: Keys.disablesGlassLook) as? Bool
         let storedWindowBackgroundImagePath = defaults.string(forKey: Keys.windowBackgroundImagePath)
         let storedWindowPosition = defaults.string(forKey: Keys.windowPosition)
+        let storedWindowDisplayTarget = defaults.string(forKey: Keys.windowDisplayTarget)
+        let storedWindowSpaceBehavior = defaults.string(forKey: Keys.windowSpaceBehavior)
         let storedAutohidesWindow = defaults.object(forKey: Keys.autohidesWindow) as? Bool
         let storedAutohideWindowDelay = defaults.object(forKey: Keys.autohideWindowDelay) as? Double
         let storedHidesSystemDock = defaults.object(forKey: Keys.hidesSystemDock) as? Bool
@@ -1014,6 +1077,8 @@ final class DockyPreferences: ObservableObject {
         self.disablesGlassLook = storedDisablesGlassLook ?? DefaultValues.disablesGlassLook
         self.windowBackgroundImagePath = storedWindowBackgroundImagePath ?? DefaultValues.windowBackgroundImagePath
         self.windowPosition = (storedWindowPosition.flatMap(DockWindowPosition.init(rawValue:)) ?? DefaultValues.windowPosition)
+        self.windowDisplayTarget = (storedWindowDisplayTarget.flatMap(DockWindowDisplayTarget.init(rawValue:)) ?? DefaultValues.windowDisplayTarget)
+        self.windowSpaceBehavior = (storedWindowSpaceBehavior.flatMap(DockWindowSpaceBehavior.init(rawValue:)) ?? DefaultValues.windowSpaceBehavior)
         self.autohidesWindow = storedAutohidesWindow ?? DefaultValues.autohidesWindow
         self.autohideWindowDelay = max(storedAutohideWindowDelay ?? DefaultValues.autohideWindowDelay, 0)
         self.hidesSystemDock = storedHidesSystemDock ?? DefaultValues.hidesSystemDock
@@ -1058,6 +1123,8 @@ final class DockyPreferences: ObservableObject {
         disablesGlassLook = DefaultValues.disablesGlassLook
         windowBackgroundImagePath = DefaultValues.windowBackgroundImagePath
         windowPosition = DefaultValues.windowPosition
+        windowDisplayTarget = DefaultValues.windowDisplayTarget
+        windowSpaceBehavior = DefaultValues.windowSpaceBehavior
         autohidesWindow = DefaultValues.autohidesWindow
         autohideWindowDelay = DefaultValues.autohideWindowDelay
         hidesSystemDock = DefaultValues.hidesSystemDock

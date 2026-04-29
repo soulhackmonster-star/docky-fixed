@@ -67,12 +67,16 @@ final class WorkspaceService: ObservableObject {
     private var lastMinimizedWindowsDebugSummary: String?
     private var attemptedMinimizedWindowPreviewIDs: Set<String> = []
     private var attemptedAppWindowPreviewIDs: Set<String> = []
+    private var prefetchedSwitchableWindows: [AppWindow] = []
+    private var lastPrefetchedSwitchableWindowsAt: Date?
+    private let switchableWindowPrefetchMaxAge: TimeInterval = 1.5
     private var liveFocusPreviewSession: LiveWindowPreviewSession?
 
     private init() {
         refresh()
         subscribe()
         subscribeToPermissions()
+        subscribeToWindowSwitcherPreferences()
         subscribeToRefreshTimer()
     }
 
@@ -129,12 +133,30 @@ final class WorkspaceService: ObservableObject {
     }
 
     func switchableWindows() -> [AppWindow] {
+        if hasFreshSwitchableWindowPrefetch, !prefetchedSwitchableWindows.isEmpty {
+            return prefetchedSwitchableWindows
+        }
+
+        return refreshSwitchableWindowSnapshot()
+    }
+
+    @discardableResult
+    private func refreshSwitchableWindowSnapshot() -> [AppWindow] {
+        let windows = querySwitchableWindows()
+        prefetchedSwitchableWindows = windows
+        lastPrefetchedSwitchableWindowsAt = Date()
+        refreshAppWindowPreviews(for: windows)
+        return windows
+    }
+
+    private func querySwitchableWindows() -> [AppWindow] {
         guard PermissionsService.shared.accessibility == .granted else {
             return []
         }
 
         let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[CFString: Any]] ?? []
         let currentProcessIdentifier = ProcessInfo.processInfo.processIdentifier
+        let runningAppsByProcessIdentifier = Dictionary(uniqueKeysWithValues: runningApps.map { ($0.processIdentifier, $0) })
         var seenWindowIdentifiers: Set<String> = []
         var cachedWindowsByBundleIdentifier: [String: [AppWindow]] = [:]
         var result: [AppWindow] = []
@@ -149,7 +171,7 @@ final class WorkspaceService: ObservableObject {
                 continue
             }
 
-            guard let runningApp = runningApps.first(where: { $0.processIdentifier == ownerPID }) else {
+            guard let runningApp = runningAppsByProcessIdentifier[ownerPID] else {
                 continue
             }
 
@@ -210,8 +232,6 @@ final class WorkspaceService: ObservableObject {
             seenWindowIdentifiers.insert(visibleWindow.windowIdentifier)
             result.append(visibleWindow)
         }
-
-        refreshAppWindowPreviews(for: result)
 
         return result
     }
@@ -458,6 +478,7 @@ final class WorkspaceService: ObservableObject {
         runningByBundleID = newMap
         runningApps = ordered
         refreshMinimizedWindows()
+        refreshSwitchableWindowPrefetchIfNeeded(force: true)
     }
 
     /// Oldest → newest. Apps without a launchDate (rare; system apps launched
@@ -496,10 +517,23 @@ final class WorkspaceService: ObservableObject {
     }
 
     private func subscribeToPermissions() {
-        PermissionsService.shared.$accessibility
+        Publishers.CombineLatest(
+            PermissionsService.shared.$accessibility,
+            PermissionsService.shared.$screenCapture
+        )
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _, _ in
+                self?.refreshMinimizedWindows()
+                self?.refreshSwitchableWindowPrefetchIfNeeded(force: true)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func subscribeToWindowSwitcherPreferences() {
+        DockyPreferences.shared.$enablesWindowSwitcher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.refreshMinimizedWindows()
+                self?.refreshSwitchableWindowPrefetchIfNeeded(force: true)
             }
             .store(in: &cancellables)
     }
@@ -509,8 +543,42 @@ final class WorkspaceService: ObservableObject {
             .autoconnect()
             .sink { [weak self] _ in
                 self?.refreshMinimizedWindows()
+                self?.refreshSwitchableWindowPrefetchIfNeeded()
             }
             .store(in: &cancellables)
+    }
+
+    private var hasFreshSwitchableWindowPrefetch: Bool {
+        guard let lastPrefetchedSwitchableWindowsAt else {
+            return false
+        }
+
+        return Date().timeIntervalSince(lastPrefetchedSwitchableWindowsAt) <= switchableWindowPrefetchMaxAge
+    }
+
+    private func refreshSwitchableWindowPrefetchIfNeeded(force: Bool = false) {
+        guard DockyPreferences.shared.enablesWindowSwitcher,
+              PermissionsService.shared.accessibility == .granted else {
+            clearSwitchableWindowPrefetch()
+            return
+        }
+
+        guard force || !hasFreshSwitchableWindowPrefetch else {
+            return
+        }
+
+        _ = refreshSwitchableWindowSnapshot()
+    }
+
+    private func clearSwitchableWindowPrefetch() {
+        prefetchedSwitchableWindows = []
+        lastPrefetchedSwitchableWindowsAt = nil
+
+        if !appWindowPreviews.isEmpty {
+            appWindowPreviews = [:]
+        }
+
+        attemptedAppWindowPreviewIDs = []
     }
 
     private func refreshMinimizedWindows() {
@@ -817,6 +885,7 @@ final class WorkspaceService: ObservableObject {
         }
 
         attemptedAppWindowPreviewIDs = attemptedAppWindowPreviewIDs.intersection(activeWindowIdentifiers)
+        var windowsToCapture: [AppWindow] = []
 
         for window in windows {
             guard updatedPreviews[window.windowIdentifier] == nil,
@@ -825,38 +894,77 @@ final class WorkspaceService: ObservableObject {
             }
 
             attemptedAppWindowPreviewIDs.insert(window.windowIdentifier)
-            captureAppWindowPreviewIfNeeded(for: window)
+            windowsToCapture.append(window)
         }
 
         if didChange {
             appWindowPreviews = updatedPreviews
         }
+
+        captureAppWindowPreviewsIfNeeded(for: windowsToCapture)
     }
 
-    private func captureAppWindowPreviewIfNeeded(for window: AppWindow) {
+    private func captureAppWindowPreviewsIfNeeded(for windows: [AppWindow]) {
+        guard !windows.isEmpty else {
+            return
+        }
+
         Task { [weak self] in
-            guard let self,
-                  let preview = await self.captureAppWindowPreview(for: window) else {
-                return
-            }
+            guard let self else { return }
 
-            guard self.appWindowPreviews[window.windowIdentifier] == nil else {
-                return
-            }
+            let shareableContentCache = ShareableContentCache()
+            for window in windows {
+                guard self.appWindowPreviews[window.windowIdentifier] == nil,
+                      let preview = await self.captureAppWindowPreview(
+                          for: window,
+                          shareableContentCache: shareableContentCache
+                      ) else {
+                    continue
+                }
 
-            var updatedPreviews = self.appWindowPreviews
-            updatedPreviews[window.windowIdentifier] = preview
-            self.appWindowPreviews = updatedPreviews
+                guard self.appWindowPreviews[window.windowIdentifier] == nil else {
+                    continue
+                }
+
+                var updatedPreviews = self.appWindowPreviews
+                updatedPreviews[window.windowIdentifier] = preview
+                self.appWindowPreviews = updatedPreviews
+            }
         }
     }
 
-    private func captureAppWindowPreview(for window: AppWindow) async -> NSImage? {
+    private func captureAppWindowPreview(
+        for window: AppWindow,
+        shareableContentCache: ShareableContentCache? = nil
+    ) async -> NSImage? {
         guard PermissionsService.shared.screenCapture == .granted else {
             return nil
         }
 
+        if let windowNumber = window.windowNumber,
+           let cgImage = CGWindowListCreateImagePrivate(
+               .null,
+               [.optionIncludingWindow],
+               CGWindowID(windowNumber),
+               [.boundsIgnoreFraming, .bestResolution]
+           ) {
+            return makeThumbnail(from: cgImage, maxSize: CGSize(width: 480, height: 300))
+        }
+
         do {
-            let shareableContent = try await shareableContentIncludingOffscreenWindows()
+            let shareableContent: SCShareableContent
+            if let shareableContentCache {
+                if let cachedContent = shareableContentCache.content {
+                    shareableContent = cachedContent
+                } else {
+                    let fetchedContent = try await shareableContentIncludingOffscreenWindows()
+                    shareableContentCache.content = fetchedContent
+                    shareableContent = fetchedContent
+                }
+            } else {
+                shareableContent = try await shareableContentIncludingOffscreenWindows()
+            }
+
             guard let shareableWindow = matchingShareableWindow(for: window, in: shareableContent.windows) else {
                 NSLog(
                     "[Docky] App window preview: no shareable window for \(window.windowIdentifier) title=\(window.windowTitle) totalShareableWindows=\(shareableContent.windows.count)"
@@ -1174,6 +1282,10 @@ final class WorkspaceService: ObservableObject {
         lastMinimizedWindowsDebugSummary = summary
         NSLog("[Docky] Minimized windows: \(summary)")
     }
+}
+
+private final class ShareableContentCache {
+    var content: SCShareableContent?
 }
 
 private final class LiveWindowPreviewSession: NSObject, SCStreamOutput {

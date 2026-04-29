@@ -303,6 +303,7 @@ final class DockEditorOverlayWindowController: NSWindowController {
     private weak var mainWindow: MainWindow?
     private var cancellables: Set<AnyCancellable> = []
     private let overlayState = DockEditorOverlayState()
+    private let preferences = DockyPreferences.shared
 
     init(mainWindow: MainWindow) {
         self.mainWindow = mainWindow
@@ -315,6 +316,7 @@ final class DockEditorOverlayWindowController: NSWindowController {
 
         observeEditMode()
         observeMainWindow()
+        observeSpaceBehavior()
     }
 
     @available(*, unavailable)
@@ -343,6 +345,17 @@ final class DockEditorOverlayWindowController: NSWindowController {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.updateFrame()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func observeSpaceBehavior() {
+        window?.collectionBehavior = preferences.windowSpaceBehavior.collectionBehavior(includesFullScreenAuxiliary: false)
+
+        preferences.$windowSpaceBehavior
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] behavior in
+                self?.window?.collectionBehavior = behavior.collectionBehavior(includesFullScreenAuxiliary: false)
             }
             .store(in: &cancellables)
     }
@@ -434,7 +447,6 @@ private final class DockEditorOverlayWindow: NSWindow {
         backgroundColor = .clear
         hasShadow = false
         level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue - 1)
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
     }
 
     override var canBecomeKey: Bool { true }
