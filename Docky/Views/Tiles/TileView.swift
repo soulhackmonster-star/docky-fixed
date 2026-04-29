@@ -8,6 +8,7 @@
 
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct TileView: View {
     let tile: Tile
@@ -18,6 +19,7 @@ struct TileView: View {
     @ObservedObject private var product = ProductService.shared
     @ObservedObject private var workspace = WorkspaceService.shared
     @ObservedObject private var mediaPlayback = MediaPlaybackService.shared
+    @ObservedObject private var editMode = DockEditModeService.shared
     @State private var isHovering = false
     @State private var isTooltipPresented = false
     @State private var isFolderPopoverPresented = false
@@ -25,6 +27,7 @@ struct TileView: View {
     @State private var isAppFolderPopoverPresented = false
     @State private var isAppFolderListMenuPresented = false
     @State private var isContextMenuPresented = false
+    @State private var isFileDropTargeted = false
     @State private var folderSnapshot: FolderContentsSnapshot = .loaded([])
     @State private var lastFolderPopoverDismissedAt: TimeInterval = 0
 
@@ -40,6 +43,7 @@ struct TileView: View {
         self._product = ObservedObject(wrappedValue: ProductService.shared)
         self._workspace = ObservedObject(wrappedValue: WorkspaceService.shared)
         self._mediaPlayback = ObservedObject(wrappedValue: MediaPlaybackService.shared)
+        self._editMode = ObservedObject(wrappedValue: DockEditModeService.shared)
     }
 
     private func contextActions(modifierFlags: NSEvent.ModifierFlags) -> [ContextAction] {
@@ -350,9 +354,21 @@ struct TileView: View {
                         .allowsHitTesting(false)
                 }
             }
+            .overlay {
+                if isFileDropTargeted {
+                    laidOutContent
+                        .disabled(true)
+                        .colorMultiply(.black.opacity(0.25))
+                }
+            }
             .contentShape(Rectangle())
             .onHover(perform: updateHoverState)
             .onTapGesture(perform: handleTap)
+            .onDrop(
+                of: [UTType.fileURL],
+                isTargeted: appDocumentDropIsTargetedBinding,
+                perform: handleAppDocumentDrop(providers:)
+            )
             .onDisappear {
                 isHovering = false
                 isTooltipPresented = false
@@ -361,6 +377,7 @@ struct TileView: View {
                 isAppFolderPopoverPresented = false
                 isAppFolderListMenuPresented = false
                 isContextMenuPresented = false
+                isFileDropTargeted = false
             }
             .onChange(of: isFolderPopoverPresented) { _, isPresented in
                 updateTooltipPresentation()
@@ -876,6 +893,92 @@ struct TileView: View {
         case .spacer, .divider:
             return
         }
+    }
+
+    private var appDocumentDropBundleIdentifier: String? {
+        guard !editMode.isActive,
+              case .app(let app) = tile.content,
+              app.displayedWidget == nil,
+              !app.bundleIdentifier.isEmpty else {
+            return nil
+        }
+
+        return app.bundleIdentifier
+    }
+
+    private var appDocumentDropIsTargetedBinding: Binding<Bool>? {
+        guard appDocumentDropBundleIdentifier != nil else {
+            return nil
+        }
+
+        return Binding(
+            get: { isFileDropTargeted },
+            set: { isFileDropTargeted = $0 }
+        )
+    }
+
+    private func handleAppDocumentDrop(providers: [NSItemProvider]) -> Bool {
+        guard let bundleIdentifier = appDocumentDropBundleIdentifier else {
+            return false
+        }
+
+        let fileURLProviders = providers.filter {
+            $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+        }
+        guard !fileURLProviders.isEmpty else {
+            return false
+        }
+
+        resolveDroppedFileURLs(from: fileURLProviders) { droppedURLs in
+            let openableURLs = droppedURLs.filter { !isApplicationBundleURL($0) }
+            guard !openableURLs.isEmpty else {
+                return
+            }
+
+            DispatchQueue.main.async {
+                WorkspaceService.shared.open(fileURLs: openableURLs, withApplicationBundleIdentifier: bundleIdentifier)
+            }
+        }
+
+        return true
+    }
+
+    private func resolveDroppedFileURLs(from providers: [NSItemProvider], completion: @escaping ([URL]) -> Void) {
+        let dispatchGroup = DispatchGroup()
+        let lock = NSLock()
+        var resolvedURLs: [URL] = []
+
+        for provider in providers {
+            dispatchGroup.enter()
+            provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
+                defer { dispatchGroup.leave() }
+                guard let data, let url = URL(dataRepresentation: data, relativeTo: nil) else {
+                    return
+                }
+
+                lock.lock()
+                resolvedURLs.append(url.standardizedFileURL.resolvingSymlinksInPath())
+                lock.unlock()
+            }
+        }
+
+        dispatchGroup.notify(queue: .global(qos: .userInitiated)) {
+            completion(Array(Set(resolvedURLs)).sorted { $0.path < $1.path })
+        }
+    }
+
+    private func isApplicationBundleURL(_ url: URL) -> Bool {
+        guard url.isFileURL else {
+            return false
+        }
+
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .typeIdentifierKey])
+        guard values?.isDirectory == true, values?.isPackage == true else {
+            return false
+        }
+
+        return url.pathExtension.caseInsensitiveCompare("app") == .orderedSame
+            || values?.typeIdentifier == UTType.application.identifier
     }
 
     private func appFolderContextActions(for folder: AppFolderTile) -> [ContextAction] {

@@ -120,6 +120,23 @@ final class WorkspaceService: ObservableObject {
         openApplication(at: appURL)
     }
 
+    func open(fileURLs: [URL], withApplicationBundleIdentifier bundleIdentifier: String) {
+        guard !fileURLs.isEmpty,
+              let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
+            return
+        }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.open(fileURLs, withApplicationAt: appURL, configuration: configuration) { _, error in
+            guard let error else {
+                return
+            }
+
+            NSLog("[Docky] Failed to open dropped files with app %@: %@ (%@)", bundleIdentifier, fileURLs.map(\.path).joined(separator: ", "), error.localizedDescription)
+        }
+    }
+
     func appWindows(bundleIdentifier: String) -> [AppWindow] {
         guard PermissionsService.shared.accessibility == .granted,
               let runningApp = runningByBundleID[bundleIdentifier] else {
