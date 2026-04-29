@@ -152,6 +152,9 @@ struct FolderPopoverView: View {
                 label()
             }
             .buttonStyle(.plain)
+            .onDrag {
+                dragItemProvider(for: itemURL)
+            }
             .onHover { isHovering in
                 guard isHovering else { return }
                 selectedItemID = item.id
@@ -357,6 +360,12 @@ struct FolderPopoverView: View {
 
     private func openCurrentFolderInFinder() {
         openInFinder(currentEntry.url)
+    }
+
+    private func dragItemProvider(for itemURL: URL) -> NSItemProvider {
+        let provider = NSItemProvider(object: itemURL as NSURL)
+        provider.suggestedName = displayName(for: itemURL)
+        return provider
     }
 
     private func selectDefaultItemIfNeeded() {

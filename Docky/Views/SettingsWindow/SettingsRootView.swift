@@ -15,6 +15,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
     case hiddenApps
     case permissions
     case actions
+    case updates
 
     var id: String { rawValue }
 
@@ -38,6 +39,8 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
             "Permissions"
         case .actions:
             "Actions"
+        case .updates:
+            "Updates"
         }
     }
 
@@ -61,6 +64,8 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
             "lock.shield"
         case .actions:
             "list.bullet.rectangle"
+        case .updates:
+            "arrow.trianglehead.clockwise"
         }
     }
 
@@ -84,6 +89,8 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
             "Review access status and request optional macOS permissions."
         case .actions:
             "Inspect loaded action packages and catalog diagnostics."
+        case .updates:
+            "Control Docky's automatic update checks and downloads."
         }
     }
     
@@ -91,12 +98,12 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .launchpad, .windowManagement, .appIcons, .actions:
             true
-        case .product, .appearance, .behavior, .hiddenApps, .permissions:
+        case .product, .appearance, .behavior, .hiddenApps, .permissions, .updates:
             false
         }
     }
 
-    static var allCases: [SettingsPane] = [.product, .appearance, .behavior, .launchpad, .windowManagement, .appIcons, .hiddenApps, .permissions, .actions]
+    static var allCases: [SettingsPane] = [.product, .appearance, .behavior, .launchpad, .windowManagement, .appIcons, .hiddenApps, .permissions, .actions, .updates]
 }
 
 struct SettingsRootView: View {
@@ -154,6 +161,8 @@ private struct SettingsDetailView: View {
             PermissionsSettingsView()
         case .actions:
             ActionCatalogSettingsView()
+        case .updates:
+            UpdatesSettingsView()
         }
     }
 }

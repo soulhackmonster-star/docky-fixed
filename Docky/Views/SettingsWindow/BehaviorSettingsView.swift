@@ -167,6 +167,18 @@ struct BehaviorSettingsView: View {
                 .padding(.vertical, 4)
             }
 
+            Section("Launch") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Open at Login", isOn: $preferences.opensAtLogin)
+                        .font(.headline)
+
+                    Text("Registers Docky as a login item so it starts automatically after you sign in.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 4)
+            }
+
             Section("System Dock") {
                 VStack(alignment: .leading, spacing: 8) {
                     Toggle("Hide System Dock", isOn: $preferences.hidesSystemDock)

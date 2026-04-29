@@ -25,18 +25,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         window?.orderOut(nil)
         NSApplication.shared.setActivationPolicy(.accessory)
         configureMainMenu()
+
+        if ApplicationInstallService.shared.promptToMoveToApplicationsIfNeeded() {
+            return
+        }
+
         _ = AppUpdateService.shared
         _ = ProductService.shared
         _ = LaunchpadHotKeyService.shared
 
         DockyPreferences.shared.applySystemDockVisibilityPreference()
+        DockyPreferences.shared.applyOpenAtLoginPreference()
 
         PermissionsService.shared.refresh()
         if PermissionsService.shared.setupComplete {
             PermissionsService.shared.markInitialOnboardingCompleted()
             showMainWindow()
         } else {
-            showPermissionsWindow(steps: PermissionsService.shared.setupPermissions)
+            showPermissionsWindow(
+                steps: PermissionsService.shared.setupPermissions,
+                marksInitialOnboardingCompleted: true,
+                showsMainWindowOnCompletion: true
+            )
         }
     }
 
@@ -91,14 +101,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return true
     }
 
-    private func showPermissionsWindow(steps: [Permission]) {
+    private func showPermissionsWindow(
+        steps: [Permission],
+        marksInitialOnboardingCompleted: Bool,
+        showsMainWindowOnCompletion: Bool
+    ) {
         NSApp.setActivationPolicy(.regular)
         let controller = PermissionsWindowController(steps: steps)
         controller.onComplete = { [weak self] in
             NSApp.setActivationPolicy(.accessory)
-            PermissionsService.shared.markInitialOnboardingCompleted()
             self?.permissionsWindowController = nil
-            self?.showMainWindow()
+
+            if marksInitialOnboardingCompleted {
+                PermissionsService.shared.markInitialOnboardingCompleted()
+            }
+
+            if showsMainWindowOnCompletion {
+                self?.showMainWindow()
+            }
         }
         permissionsWindowController = controller
         controller.showWindow(nil)
@@ -227,6 +247,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSLog("[Docky] Seeded dummy widget debug content")
     }
 
+    @objc private func showDebugOnboarding(_ sender: Any?) {
+        PermissionsService.shared.refresh()
+        showPermissionsWindow(
+            steps: Permission.allCases,
+            marksInitialOnboardingCompleted: false,
+            showsMainWindowOnCompletion: false
+        )
+    }
+
     @objc private func setFreeProductMode(_ sender: Any?) {
         ProductService.shared.setDebugTier(.free)
         NSLog("[Docky] Switched debug product tier to Free")
@@ -295,6 +324,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         )
         seedDummyWidgetContentItem.target = self
 
+        let showOnboardingItem = NSMenuItem(
+            title: "Show Onboarding",
+            action: #selector(showDebugOnboarding(_:)),
+            keyEquivalent: ""
+        )
+        showOnboardingItem.target = self
+
         let productModeMenu = NSMenu(title: "Product Mode")
 
         let freeModeItem = NSMenuItem(
@@ -351,6 +387,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         debugMenu.addItem(seedDummyLayoutItem)
         debugMenu.addItem(loadDemoLayoutItem)
         debugMenu.addItem(seedDummyWidgetContentItem)
+        debugMenu.addItem(showOnboardingItem)
         debugMenu.addItem(productModeItem)
         debugMenu.addItem(.separator())
         debugMenu.addItem(quitItem)

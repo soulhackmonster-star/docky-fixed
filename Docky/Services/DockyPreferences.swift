@@ -692,6 +692,23 @@ final class DockyPreferences: ObservableObject {
         }
     }
 
+    /// Whether Docky should register itself to launch when the user logs in.
+    @Published var opensAtLogin: Bool {
+        didSet {
+            guard opensAtLogin != oldValue else { return }
+            defaults.set(opensAtLogin, forKey: Keys.opensAtLogin)
+
+            guard !isSyncingOpenAtLoginPreference else {
+                return
+            }
+
+            guard LaunchAtLoginService.shared.setEnabled(opensAtLogin) else {
+                syncOpenAtLoginPreferenceFromSystem()
+                return
+            }
+        }
+    }
+
     /// Delay before Docky hides its own window after interaction ends.
     @Published var autohideWindowDelay: TimeInterval {
         didSet {
@@ -931,6 +948,7 @@ final class DockyPreferences: ObservableObject {
     private let defaults: UserDefaults
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private var isSyncingOpenAtLoginPreference = false
 
     var effectiveWindowTintColor: NSColor {
         windowTintColor?.nsColor ?? Self.defaultWindowTintColor
@@ -1044,6 +1062,7 @@ final class DockyPreferences: ObservableObject {
         static let windowDisplayTarget = "docky.windowDisplayTarget"
         static let windowSpaceBehavior = "docky.windowSpaceBehavior"
         static let autohidesWindow = "docky.autohidesWindow"
+        static let opensAtLogin = "docky.opensAtLogin"
         static let autohideWindowDelay = "docky.autohideWindowDelay"
         static let hidesSystemDock = "docky.hidesSystemDock"
         static let overflowBehavior = "docky.overflowBehavior"
@@ -1083,6 +1102,7 @@ final class DockyPreferences: ObservableObject {
         static let windowDisplayTarget: DockWindowDisplayTarget = .primaryDisplay
         static let windowSpaceBehavior: DockWindowSpaceBehavior = .allSpaces
         static let autohidesWindow = false
+        static let opensAtLogin = true
         static let autohideWindowDelay: TimeInterval = 0.5
         static let hidesSystemDock = true
         static let overflowBehavior: DockOverflowBehavior = .rescale
@@ -1123,6 +1143,7 @@ final class DockyPreferences: ObservableObject {
         let storedWindowDisplayTarget = defaults.string(forKey: Keys.windowDisplayTarget)
         let storedWindowSpaceBehavior = defaults.string(forKey: Keys.windowSpaceBehavior)
         let storedAutohidesWindow = defaults.object(forKey: Keys.autohidesWindow) as? Bool
+        let storedOpensAtLogin = defaults.object(forKey: Keys.opensAtLogin) as? Bool
         let storedAutohideWindowDelay = defaults.object(forKey: Keys.autohideWindowDelay) as? Double
         let storedHidesSystemDock = defaults.object(forKey: Keys.hidesSystemDock) as? Bool
         let storedOverflowBehavior = defaults.string(forKey: Keys.overflowBehavior)
@@ -1162,6 +1183,7 @@ final class DockyPreferences: ObservableObject {
         self.windowDisplayTarget = (storedWindowDisplayTarget.flatMap(DockWindowDisplayTarget.init(rawValue:)) ?? DefaultValues.windowDisplayTarget)
         self.windowSpaceBehavior = (storedWindowSpaceBehavior.flatMap(DockWindowSpaceBehavior.init(rawValue:)) ?? DefaultValues.windowSpaceBehavior)
         self.autohidesWindow = storedAutohidesWindow ?? DefaultValues.autohidesWindow
+        self.opensAtLogin = storedOpensAtLogin ?? LaunchAtLoginService.shared.isEnabled
         self.autohideWindowDelay = max(storedAutohideWindowDelay ?? DefaultValues.autohideWindowDelay, 0)
         self.hidesSystemDock = storedHidesSystemDock ?? DefaultValues.hidesSystemDock
         self.overflowBehavior = (storedOverflowBehavior.flatMap(DockOverflowBehavior.init(rawValue:)) ?? DefaultValues.overflowBehavior)
@@ -1196,6 +1218,14 @@ final class DockyPreferences: ObservableObject {
         }
     }
 
+    func applyOpenAtLoginPreference() {
+        guard !LaunchAtLoginService.shared.setEnabled(opensAtLogin) else {
+            return
+        }
+
+        syncOpenAtLoginPreferenceFromSystem()
+    }
+
     func resetToDefaults() {
         tileVerticalPadding = DefaultValues.tileVerticalPadding
         tileSpacing = DefaultValues.tileSpacing
@@ -1210,6 +1240,7 @@ final class DockyPreferences: ObservableObject {
         windowDisplayTarget = DefaultValues.windowDisplayTarget
         windowSpaceBehavior = DefaultValues.windowSpaceBehavior
         autohidesWindow = DefaultValues.autohidesWindow
+        opensAtLogin = DefaultValues.opensAtLogin
         autohideWindowDelay = DefaultValues.autohideWindowDelay
         hidesSystemDock = DefaultValues.hidesSystemDock
         overflowBehavior = DefaultValues.overflowBehavior
@@ -1247,6 +1278,18 @@ final class DockyPreferences: ObservableObject {
         }
 
         SystemDockVisibilityService.shared.setOrientation(orientation)
+    }
+
+    private func syncOpenAtLoginPreferenceFromSystem() {
+        let actualValue = LaunchAtLoginService.shared.isEnabled
+        guard opensAtLogin != actualValue else {
+            defaults.set(actualValue, forKey: Keys.opensAtLogin)
+            return
+        }
+
+        isSyncingOpenAtLoginPreference = true
+        opensAtLogin = actualValue
+        isSyncingOpenAtLoginPreference = false
     }
 
     private func persistPinnedItems(_ items: [PinnedTileItem]) {

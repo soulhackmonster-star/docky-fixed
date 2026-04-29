@@ -7,8 +7,26 @@ import Combine
 import Foundation
 import Sparkle
 
+private final class AppUpdateFeedDelegate: NSObject, SPUUpdaterDelegate {
+    let fallbackFeedURLString: String
+
+    init(fallbackFeedURLString: String) {
+        self.fallbackFeedURLString = fallbackFeedURLString
+    }
+
+    func feedURLString(for updater: SPUUpdater) -> String? {
+        if let feedURL = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
+           !feedURL.isEmpty {
+            return feedURL
+        }
+
+        return fallbackFeedURLString
+    }
+}
+
 final class AppUpdateService: ObservableObject {
     static let shared = AppUpdateService()
+    static let feedURLString = "https://getdocky.com/releases/appcast.xml"
 
     @Published private(set) var canCheckForUpdates: Bool
     @Published var automaticallyChecksForUpdates: Bool {
@@ -33,6 +51,7 @@ final class AppUpdateService: ObservableObject {
     }
 
     let updaterController: SPUStandardUpdaterController
+    private let feedDelegate: AppUpdateFeedDelegate
 
     private var updater: SPUUpdater {
         updaterController.updater
@@ -41,9 +60,11 @@ final class AppUpdateService: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     private init() {
+        feedDelegate = AppUpdateFeedDelegate(fallbackFeedURLString: Self.feedURLString)
+
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,
-            updaterDelegate: nil,
+            updaterDelegate: feedDelegate,
             userDriverDelegate: nil
         )
 
