@@ -308,6 +308,7 @@ final class TileStore: ObservableObject {
             pinnedItems.append(.appFolder(
                 displayName: "Folder",
                 bundleIdentifiers: appFolderBundleIdentifiers,
+                displayMode: .grid,
                 contentViewMode: .grid
             ))
         } else {
@@ -415,6 +416,7 @@ final class TileStore: ObservableObject {
             let createdFolder = PinnedTileItem.appFolder(
                 displayName: seededFolderName,
                 bundleIdentifiers: folderBundleIdentifiers,
+                displayMode: .grid,
                 contentViewMode: .grid
             )
 
@@ -451,6 +453,7 @@ final class TileStore: ObservableObject {
                 id: folderItem.id,
                 displayName: folderItem.folderDisplayName ?? "Folder",
                 bundleIdentifiers: folderItem.folderBundleIdentifiers + sourceBundleIdentifiers,
+                displayMode: folderItem.appFolderDisplayMode ?? .grid,
                 contentViewMode: folderItem.folderContentViewMode ?? .grid
             )
             preferences.pinnedItems = updatedItems
@@ -496,6 +499,7 @@ final class TileStore: ObservableObject {
             id: existingItem.id,
             displayName: normalizedDisplayName,
             bundleIdentifiers: existingItem.folderBundleIdentifiers,
+            displayMode: existingItem.appFolderDisplayMode ?? .grid,
             contentViewMode: existingItem.folderContentViewMode ?? .grid
         )
         preferences.pinnedItems = pinnedItems
@@ -553,6 +557,7 @@ final class TileStore: ObservableObject {
                 id: existingItem.id,
                 displayName: existingItem.folderDisplayName ?? "Folder",
                 bundleIdentifiers: remainingBundleIdentifiers,
+                displayMode: existingItem.appFolderDisplayMode ?? .grid,
                 contentViewMode: existingItem.folderContentViewMode ?? .grid
             )
         }
@@ -583,6 +588,7 @@ final class TileStore: ObservableObject {
             bundleIdentifier: existingItem.bundleIdentifier,
             folderDisplayName: existingItem.folderDisplayName,
             folderBundleIdentifiers: existingItem.folderBundleIdentifiers,
+            appFolderDisplayMode: existingItem.appFolderDisplayMode,
             folderContentViewMode: mode,
             widgetKind: existingItem.widgetKind,
             widgetOwnerBundleIdentifier: existingItem.widgetOwnerBundleIdentifier,
@@ -601,6 +607,45 @@ final class TileStore: ObservableObject {
         }
 
         return item.folderContentViewMode ?? .grid
+    }
+
+    func setAppFolderDisplayMode(tileID: String, mode: AppFolderTileDisplayMode) {
+        guard let itemIndex = preferences.pinnedItems.firstIndex(where: { Self.pinnedTileID(for: $0) == tileID }),
+              preferences.pinnedItems[itemIndex].kind == .appFolder else {
+            return
+        }
+
+        let existingItem = preferences.pinnedItems[itemIndex]
+        guard (existingItem.appFolderDisplayMode ?? .grid) != mode else {
+            return
+        }
+
+        var pinnedItems = preferences.pinnedItems
+        pinnedItems[itemIndex] = PinnedTileItem(
+            id: existingItem.id,
+            kind: existingItem.kind,
+            bundleIdentifier: existingItem.bundleIdentifier,
+            folderDisplayName: existingItem.folderDisplayName,
+            folderBundleIdentifiers: existingItem.folderBundleIdentifiers,
+            appFolderDisplayMode: mode,
+            folderContentViewMode: existingItem.folderContentViewMode,
+            widgetKind: existingItem.widgetKind,
+            widgetOwnerBundleIdentifier: existingItem.widgetOwnerBundleIdentifier,
+            widgetSpan: existingItem.widgetSpan,
+            hiddenWidgetOwnerBundleIdentifiers: existingItem.hiddenWidgetOwnerBundleIdentifiers
+        )
+        preferences.pinnedItems = pinnedItems
+        refreshPinnedTilesFromPreferences()
+        rebuildTiles()
+    }
+
+    func appFolderDisplayMode(tileID: String) -> AppFolderTileDisplayMode {
+        guard let item = preferences.pinnedItems.first(where: { Self.pinnedTileID(for: $0) == tileID }),
+              item.kind == .appFolder else {
+            return .grid
+        }
+
+        return item.appFolderDisplayMode ?? .grid
     }
 
     func toggleInlineAppFolderExpansion(folderID: String) {
@@ -843,6 +888,7 @@ final class TileStore: ObservableObject {
                     bundleIdentifier: nil,
                     folderDisplayName: nil,
                     folderBundleIdentifiers: [],
+                    appFolderDisplayMode: nil,
                     folderContentViewMode: nil,
                     widgetKind: widgetKind,
                     widgetOwnerBundleIdentifier: ownerBundleIdentifier,
@@ -856,6 +902,7 @@ final class TileStore: ObservableObject {
                     bundleIdentifier: nil,
                     folderDisplayName: nil,
                     folderBundleIdentifiers: [],
+                    appFolderDisplayMode: nil,
                     folderContentViewMode: nil,
                     widgetKind: nil,
                     widgetOwnerBundleIdentifier: nil,
@@ -869,6 +916,7 @@ final class TileStore: ObservableObject {
                     bundleIdentifier: nil,
                     folderDisplayName: nil,
                     folderBundleIdentifiers: [],
+                    appFolderDisplayMode: nil,
                     folderContentViewMode: nil,
                     widgetKind: nil,
                     widgetOwnerBundleIdentifier: nil,
@@ -882,6 +930,7 @@ final class TileStore: ObservableObject {
                     bundleIdentifier: nil,
                     folderDisplayName: nil,
                     folderBundleIdentifiers: [],
+                    appFolderDisplayMode: nil,
                     folderContentViewMode: nil,
                     widgetKind: nil,
                     widgetOwnerBundleIdentifier: nil,
@@ -1038,6 +1087,7 @@ final class TileStore: ObservableObject {
                 bundleIdentifier: existingItem.bundleIdentifier,
                 folderDisplayName: existingItem.folderDisplayName,
                 folderBundleIdentifiers: existingItem.folderBundleIdentifiers,
+                appFolderDisplayMode: existingItem.appFolderDisplayMode,
                 folderContentViewMode: existingItem.folderContentViewMode,
                 widgetKind: existingItem.widgetKind,
                 widgetOwnerBundleIdentifier: existingItem.widgetOwnerBundleIdentifier,
@@ -1100,6 +1150,7 @@ final class TileStore: ObservableObject {
             bundleIdentifier: existingItem.bundleIdentifier,
             folderDisplayName: existingItem.folderDisplayName,
             folderBundleIdentifiers: existingItem.folderBundleIdentifiers,
+            appFolderDisplayMode: existingItem.appFolderDisplayMode,
             folderContentViewMode: existingItem.folderContentViewMode,
             widgetKind: existingItem.widgetKind,
             widgetOwnerBundleIdentifier: existingItem.widgetOwnerBundleIdentifier,
@@ -1780,6 +1831,7 @@ final class TileStore: ObservableObject {
                         id: item.id,
                         displayName: item.folderDisplayName ?? "Folder",
                         bundleIdentifiers: remainingBundleIdentifiers,
+                        displayMode: item.appFolderDisplayMode ?? .grid,
                         contentViewMode: item.folderContentViewMode ?? .grid
                     )
                 }
@@ -1837,6 +1889,7 @@ final class TileStore: ObservableObject {
                     identifier: item.id,
                     displayName: item.folderDisplayName ?? "Folder",
                     apps: apps,
+                    displayMode: item.appFolderDisplayMode ?? .grid,
                     contentViewMode: item.folderContentViewMode ?? .grid
                 ))
             )
@@ -2248,6 +2301,7 @@ final class TileStore: ObservableObject {
                 id: folder.identifier,
                 displayName: folder.displayName,
                 bundleIdentifiers: folder.bundleIdentifiers,
+                displayMode: folder.displayMode,
                 contentViewMode: folder.contentViewMode
             )
         case .launchpad(let launchpad):
@@ -2261,6 +2315,7 @@ final class TileStore: ObservableObject {
                 bundleIdentifier: nil,
                 folderDisplayName: nil,
                 folderBundleIdentifiers: [],
+                appFolderDisplayMode: nil,
                 folderContentViewMode: nil,
                 widgetKind: nil,
                 widgetOwnerBundleIdentifier: nil,
@@ -2274,6 +2329,7 @@ final class TileStore: ObservableObject {
                 bundleIdentifier: nil,
                 folderDisplayName: nil,
                 folderBundleIdentifiers: [],
+                appFolderDisplayMode: nil,
                 folderContentViewMode: nil,
                 widgetKind: nil,
                 widgetOwnerBundleIdentifier: nil,

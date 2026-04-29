@@ -39,6 +39,7 @@ struct PinnedTileItem: Codable, Equatable, Identifiable {
     let bundleIdentifier: String?
     let folderDisplayName: String?
     let folderBundleIdentifiers: [String]
+    let appFolderDisplayMode: AppFolderTileDisplayMode?
     let folderContentViewMode: FolderTileContentViewMode?
     let widgetKind: WidgetKind?
     let widgetOwnerBundleIdentifier: String?
@@ -52,6 +53,7 @@ struct PinnedTileItem: Codable, Equatable, Identifiable {
             bundleIdentifier: bundleIdentifier,
             folderDisplayName: nil,
             folderBundleIdentifiers: [],
+            appFolderDisplayMode: nil,
             folderContentViewMode: nil,
             widgetKind: nil,
             widgetOwnerBundleIdentifier: nil,
@@ -64,6 +66,7 @@ struct PinnedTileItem: Codable, Equatable, Identifiable {
         id: String = "custom:\(UUID().uuidString)",
         displayName: String = "Folder",
         bundleIdentifiers: [String],
+        displayMode: AppFolderTileDisplayMode = .grid,
         contentViewMode: FolderTileContentViewMode = .grid
     ) -> Self {
         Self(
@@ -72,6 +75,7 @@ struct PinnedTileItem: Codable, Equatable, Identifiable {
             bundleIdentifier: nil,
             folderDisplayName: displayName,
             folderBundleIdentifiers: bundleIdentifiers,
+            appFolderDisplayMode: displayMode,
             folderContentViewMode: contentViewMode,
             widgetKind: nil,
             widgetOwnerBundleIdentifier: nil,
@@ -87,6 +91,7 @@ struct PinnedTileItem: Codable, Equatable, Identifiable {
             bundleIdentifier: nil,
             folderDisplayName: nil,
             folderBundleIdentifiers: [],
+            appFolderDisplayMode: nil,
             folderContentViewMode: nil,
             widgetKind: kind,
             widgetOwnerBundleIdentifier: ownerBundleIdentifier,
@@ -102,6 +107,7 @@ struct PinnedTileItem: Codable, Equatable, Identifiable {
             bundleIdentifier: nil,
             folderDisplayName: nil,
             folderBundleIdentifiers: [],
+            appFolderDisplayMode: nil,
             folderContentViewMode: nil,
             widgetKind: nil,
             widgetOwnerBundleIdentifier: nil,
@@ -117,6 +123,7 @@ struct PinnedTileItem: Codable, Equatable, Identifiable {
             bundleIdentifier: nil,
             folderDisplayName: nil,
             folderBundleIdentifiers: [],
+            appFolderDisplayMode: nil,
             folderContentViewMode: nil,
             widgetKind: nil,
             widgetOwnerBundleIdentifier: nil,
@@ -132,6 +139,7 @@ struct PinnedTileItem: Codable, Equatable, Identifiable {
             bundleIdentifier: nil,
             folderDisplayName: nil,
             folderBundleIdentifiers: [],
+            appFolderDisplayMode: nil,
             folderContentViewMode: nil,
             widgetKind: nil,
             widgetOwnerBundleIdentifier: nil,
@@ -147,6 +155,7 @@ struct PinnedTileItem: Codable, Equatable, Identifiable {
             bundleIdentifier: nil,
             folderDisplayName: nil,
             folderBundleIdentifiers: [],
+            appFolderDisplayMode: nil,
             folderContentViewMode: nil,
             widgetKind: nil,
             widgetOwnerBundleIdentifier: nil,
@@ -551,6 +560,20 @@ enum FolderTileDisplayMode: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .folder: "Folder"
         case .contents: "Contents"
+        }
+    }
+}
+
+enum AppFolderTileDisplayMode: String, CaseIterable, Codable, Identifiable {
+    case grid
+    case stack
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .grid: "Grid"
+        case .stack: "Stack"
         }
     }
 }

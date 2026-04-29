@@ -87,6 +87,10 @@ struct AppFolderTileView: View {
         position.isVertical ? 3 : 0
     }
 
+    private var isInlineExpanded: Bool {
+        tile.contentViewMode == .inline && store.isInlineAppFolderExpanded(folderID: tile.identifier)
+    }
+
     var body: some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -95,7 +99,7 @@ struct AppFolderTileView: View {
     @ViewBuilder
     private var content: some View {
         GeometryReader { geo in
-            iconGrid(in: geo.size)
+            displayContent(in: geo.size)
                 .background(
                     Color.primary.opacity(openedAppCount > 0 ? 0.2 : 0)
                         .clipShape(.rect(cornerRadius: cornerRadius, style: .continuous))
@@ -110,6 +114,39 @@ struct AppFolderTileView: View {
                             y: position.isVertical ? groupedOpenedBackdropOffset + groupedOpenedBackdropVerticalYOffset : 0
                         )
                 )
+        }
+    }
+
+    @ViewBuilder
+    private func displayContent(in size: CGSize) -> some View {
+        if isInlineExpanded {
+            inlineExpandedPlaceholder(in: size)
+        } else {
+            preview(in: size)
+        }
+    }
+
+    private func inlineExpandedPlaceholder(in size: CGSize) -> some View {
+        ZStack {
+            preview(in: size)
+                .opacity(0.14)
+
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(.primary.opacity(0.08))
+                .padding(6)
+
+            Image(systemName: "chevron.left")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.primary.opacity(0.9))
+        }
+    }
+
+    @ViewBuilder
+    private func preview(in size: CGSize) -> some View {
+        if tile.displayMode == .stack {
+            stackedPreview(in: size)
+        } else {
+            iconGrid(in: size)
         }
     }
 
@@ -158,6 +195,52 @@ struct AppFolderTileView: View {
             }
             .padding(size.width * 0.12)
         }
+    }
+
+    @ViewBuilder
+    private func stackedPreview(in size: CGSize) -> some View {
+        let displayedApps = Array(tile.apps.prefix(3))
+
+        if let topApp = displayedApps.first {
+            let additionalApps = Array(displayedApps.dropFirst().suffix(2))
+            let chromeInset = floor(min(size.width, size.height) * 3 / 32)
+
+            ZStack {
+                ForEach(Array(additionalApps.enumerated()), id: \.element.bundleIdentifier) { index, app in
+                    let depth = additionalApps.count - index
+                    appStackTile(for: app, in: size, chromeInset: chromeInset)
+                        .rotationEffect(.degrees(stackRotationDegrees(for: depth)))
+                        .offset(
+                            x: stackOffset(for: depth),
+                            y: stackOffset(for: depth + 1)
+                        )
+                }
+
+                appStackTile(for: topApp, in: size, chromeInset: chromeInset)
+            }
+            .frame(width: size.width, height: size.height)
+        } else {
+            iconGrid(in: size)
+        }
+    }
+
+    private func appStackTile(for app: AppTile, in size: CGSize, chromeInset: CGFloat) -> some View {
+        AppTileView(
+            tile: AppTile(bundleIdentifier: app.bundleIdentifier, displayName: app.displayName),
+            clipShape: preferences.tileClipShape,
+            transparencyCompensationInset: chromeInset
+        )
+        .frame(width: size.width, height: size.height)
+    }
+
+    private func stackRotationDegrees(for depth: Int) -> Double {
+        let magnitude = Double(depth) * 2.5
+        return depth.isMultiple(of: 2) ? magnitude : -magnitude
+    }
+
+    private func stackOffset(for depth: Int) -> CGFloat {
+        let magnitude = CGFloat(depth / 2) * 2.5
+        return depth.isMultiple(of: 2) ? magnitude : -magnitude
     }
 
     @ViewBuilder

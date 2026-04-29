@@ -848,7 +848,7 @@ struct TileContainerView: View {
     }
 
     private func dragPreviewStackRotationDegrees(for depth: Int) -> Double {
-        let magnitude = Double(depth) * 12.5
+        let magnitude = Double(depth) * (Double(depth) + 0.5)
         return depth.isMultiple(of: 2) ? magnitude : -magnitude
     }
     

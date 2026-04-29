@@ -203,6 +203,14 @@ struct TileView: View {
         return TileStore.shared.appFolderContentViewMode(tileID: tile.id)
     }
 
+    private var appFolderDisplayMode: AppFolderTileDisplayMode {
+        guard case .appFolder = tile.content else {
+            return .grid
+        }
+
+        return TileStore.shared.appFolderDisplayMode(tileID: tile.id)
+    }
+
     private var folderSortMode: FolderTileSortMode {
         guard case .folder(let folder) = tile.content else {
             return .dateModified
@@ -252,6 +260,14 @@ struct TileView: View {
 
         if case .appFolder = tile.content {
             actions.append(.divider)
+            actions.append(.submenu("Display As", children: [
+                .action("Grid", isOn: appFolderDisplayMode == .grid) {
+                    TileStore.shared.setAppFolderDisplayMode(tileID: tile.id, mode: .grid)
+                },
+                .action("Stack", isOn: appFolderDisplayMode == .stack) {
+                    TileStore.shared.setAppFolderDisplayMode(tileID: tile.id, mode: .stack)
+                }
+            ]))
             actions.append(.submenu("View Content as", children: [
                 .action("Grid", isOn: appFolderContentViewMode == .grid) {
                     TileStore.shared.setAppFolderContentViewMode(tileID: tile.id, mode: .grid)
@@ -450,6 +466,7 @@ struct TileView: View {
                         identifier: folder.identifier,
                         displayName: folder.displayName,
                         apps: folder.apps,
+                        displayMode: appFolderDisplayMode,
                         contentViewMode: appFolderContentViewMode
                     )
 

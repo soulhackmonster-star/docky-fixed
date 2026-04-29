@@ -58,17 +58,20 @@ struct AppFolderTile: Equatable {
     let identifier: String
     let displayName: String
     let apps: [AppTile]
+    let displayMode: AppFolderTileDisplayMode
     let contentViewMode: FolderTileContentViewMode
 
     nonisolated init(
         identifier: String,
         displayName: String,
         apps: [AppTile],
+        displayMode: AppFolderTileDisplayMode = .grid,
         contentViewMode: FolderTileContentViewMode = .grid
     ) {
         self.identifier = identifier
         self.displayName = displayName
         self.apps = apps
+        self.displayMode = displayMode
         self.contentViewMode = contentViewMode
     }
 
