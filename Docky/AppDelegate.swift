@@ -76,6 +76,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return AppUpdateService.shared.canCheckForUpdates
         }
 
+        #if DEBUG
+        if menuItem.action == #selector(setFreeProductMode(_:)) {
+            menuItem.state = ProductService.shared.currentTier == .free ? .on : .off
+            return true
+        }
+
+        if menuItem.action == #selector(setProProductMode(_:)) {
+            menuItem.state = ProductService.shared.currentTier == .pro ? .on : .off
+            return true
+        }
+        #endif
+
         return true
     }
 
@@ -203,6 +215,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSLog("[Docky] Seeded dummy debug layout")
     }
 
+    @objc private func setFreeProductMode(_ sender: Any?) {
+        ProductService.shared.setDebugTier(.free)
+        NSLog("[Docky] Switched debug product tier to Free")
+    }
+
+    @objc private func setProProductMode(_ sender: Any?) {
+        ProductService.shared.setDebugTier(.pro)
+        NSLog("[Docky] Switched debug product tier to Pro")
+    }
+
     private func installDebugStatusItem() {
         guard debugStatusItem == nil else {
             return
@@ -247,6 +269,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         )
         seedDummyLayoutItem.target = self
 
+        let productModeMenu = NSMenu(title: "Product Mode")
+
+        let freeModeItem = NSMenuItem(
+            title: "Free",
+            action: #selector(setFreeProductMode(_:)),
+            keyEquivalent: ""
+        )
+        freeModeItem.target = self
+
+        let proModeItem = NSMenuItem(
+            title: "Pro",
+            action: #selector(setProProductMode(_:)),
+            keyEquivalent: ""
+        )
+        proModeItem.target = self
+
+        productModeMenu.addItem(freeModeItem)
+        productModeMenu.addItem(proModeItem)
+
+        let productModeItem = NSMenuItem(
+            title: "Product Mode",
+            action: nil,
+            keyEquivalent: ""
+        )
+        productModeItem.submenu = productModeMenu
+
         let settingsItem = NSMenuItem(
             title: "Settings…",
             action: #selector(showSettingsWindow(_:)),
@@ -275,6 +323,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         debugMenu.addItem(pinEveryAppItem)
         debugMenu.addItem(resetPinnedItemsItem)
         debugMenu.addItem(seedDummyLayoutItem)
+        debugMenu.addItem(productModeItem)
         debugMenu.addItem(.separator())
         debugMenu.addItem(quitItem)
 

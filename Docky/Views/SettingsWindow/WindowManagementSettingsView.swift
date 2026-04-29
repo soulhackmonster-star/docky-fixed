@@ -13,14 +13,9 @@ struct WindowManagementSettingsView: View {
     var body: some View {
         Form {
             Section("Window Switcher") {
-                if !product.isUnlocked(.windowSwitcher) {
-                    ProFeatureNotice(feature: .windowSwitcher)
-                }
-
                 VStack(alignment: .leading, spacing: 8) {
                     Toggle("Enable Window Switcher", isOn: $preferences.enablesWindowSwitcher)
                         .font(.headline)
-                        .disabled(!product.isUnlocked(.windowSwitcher))
 
                     Text("Turn Docky's Cmd-Tab-style switcher on or off without clearing its shortcut or preview preference.")
                         .foregroundStyle(.secondary)
@@ -48,7 +43,7 @@ struct WindowManagementSettingsView: View {
                         ) { shortcut in
                             preferences.windowSwitcherShortcut = shortcut
                         }
-                        .disabled(!product.isUnlocked(.windowSwitcher) || !preferences.enablesWindowSwitcher)
+                        .disabled(!preferences.enablesWindowSwitcher)
                     }
 
                     Text("While the switcher is open, keep the shortcut modifiers held and tap the shortcut again to cycle. Release the modifiers to focus the selected window.")
@@ -56,6 +51,12 @@ struct WindowManagementSettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.vertical, 4)
+
+                if !product.isUnlocked(.windowSwitcher) {
+                    Text("Docky Pro unlocks the selected-window preview and window context menus inside the switcher.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 VStack(alignment: .leading, spacing: 8) {
                     Toggle("Preview Selected Window In Place", isOn: $preferences.showsWindowSwitcherFocusPreview)

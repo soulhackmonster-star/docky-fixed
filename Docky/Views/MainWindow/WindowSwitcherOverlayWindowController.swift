@@ -308,6 +308,10 @@ private struct WindowSwitcherCard: View {
     }
 
     private func contextActions(modifierFlags: NSEvent.ModifierFlags) -> [ContextAction] {
+        guard ProductService.shared.isUnlocked(.windowSwitcher) else {
+            return []
+        }
+
         return [
             .action("Focus Window") {
                 switcher.dismiss()

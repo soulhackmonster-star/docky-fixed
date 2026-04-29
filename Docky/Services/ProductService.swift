@@ -104,7 +104,7 @@ enum ProductFeature: Hashable, Identifiable {
         case .launchpad:
             "Docky's fullscreen app launcher, its layout controls, and optional global shortcut."
         case .windowSwitcher:
-            "Docky's global Cmd-Tab-style window switcher and its in-place preview."
+            "Selected-window preview and window context actions in Docky's global Cmd-Tab-style switcher."
         case .customAppIcons:
             "Per-app icon overrides for pinned, running, and widget-backed apps."
         case .groupedAppFolders:
@@ -327,6 +327,14 @@ final class ProductService: ObservableObject {
         currentTier = tier
         refreshRegistrationStatus()
     }
+
+    #if DEBUG
+    func setDebugTier(_ tier: ProductTier) {
+        verificationTask?.cancel()
+        currentTier = tier
+        refreshRegistrationStatus()
+    }
+    #endif
 
     private func refreshRegistrationStatus() {
         if currentTier == .pro {

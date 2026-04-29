@@ -59,11 +59,6 @@ final class WindowSwitcherService: ObservableObject {
     }
 
     func handleHotKeyPress(direction: Int) {
-        guard ProductService.shared.isUnlocked(.windowSwitcher) else {
-            dismiss()
-            return
-        }
-
         guard DockyPreferences.shared.enablesWindowSwitcher else {
             dismiss()
             return
@@ -315,6 +310,7 @@ final class WindowSwitcherService: ObservableObject {
         focusedPreview = nil
 
         guard preferences.showsWindowSwitcherFocusPreview,
+              ProductService.shared.isUnlocked(.windowSwitcher),
               isPresented,
               !isContextMenuPresented,
               windows.contains(where: { $0.windowIdentifier == identifier }) else {
@@ -330,6 +326,7 @@ final class WindowSwitcherService: ObservableObject {
 
     private func runFocusedPreviewLoop(forWindowIdentifier identifier: String) async {
         guard DockyPreferences.shared.showsWindowSwitcherFocusPreview,
+              ProductService.shared.isUnlocked(.windowSwitcher),
               isPresented,
               !isContextMenuPresented,
               selectedWindowIdentifier == identifier,
