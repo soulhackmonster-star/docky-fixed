@@ -197,6 +197,26 @@ final class WeatherService: NSObject, ObservableObject {
         let longitude = String(format: "%.2f", location.coordinate.longitude)
         return "\(latitude), \(longitude)"
     }
+
+    #if DEBUG
+    func seedDummyDebugSnapshot() {
+        pendingRefreshTask?.cancel()
+        pendingRefreshTask = nil
+
+        snapshot = WeatherSnapshot(
+            locationName: "San Francisco",
+            temperature: 68,
+            highTemperature: 72,
+            lowTemperature: 58,
+            symbolName: "sun.max.fill",
+            conditionDescription: "Clear"
+        )
+        lastRefreshDate = Date()
+        isLoading = false
+        isAwaitingLocation = false
+        lastErrorDescription = nil
+    }
+    #endif
 }
 
 extension WeatherService: CLLocationManagerDelegate {

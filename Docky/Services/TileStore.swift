@@ -19,6 +19,19 @@ final class TileStore: ObservableObject {
     @Published private(set) var tiles: [Tile] = []
 
     private static let changeNotification = Notification.Name("com.apple.dock.prefchanged")
+    private static let demoDebugPinnedAppNames = [
+        "Dia",
+        "Notes",
+        "Calendar",
+        "Music",
+        "Messages",
+        "Slack",
+        "Mail",
+        "Xcode",
+        "Figma",
+        "Ghostty",
+        "Linear"
+    ]
 
     private var pinnedTiles: [Tile] = []
     private var systemOtherTiles: [Tile] = []
@@ -315,6 +328,33 @@ final class TileStore: ObservableObject {
             contentViewMode: .grid
         ))
         preferences.trailingItems = trailingItems
+        refreshPinnedTilesFromPreferences()
+        refreshTrailingTilesFromPreferences()
+        rebuildTiles()
+    }
+
+    func loadDemoDebugLayout() {
+        let pinnedAppBundleIdentifiers = Self.demoDebugPinnedAppNames.compactMap {
+            Self.resolveInstalledAppBundleIdentifier(named: $0)
+        }
+        let downloadsURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Downloads", isDirectory: true)
+
+        preferences.pinnedItems = pinnedAppBundleIdentifiers.map(PinnedTileItem.app(bundleIdentifier:))
+
+        var trailingItems: [TrailingTileItem] = []
+        if ProductService.shared.availability(for: .smartStack, context: .newPlacement).allowsNewPlacement {
+            trailingItems.append(.smartStack())
+        }
+        trailingItems.append(.folder(
+            url: downloadsURL,
+            displayName: "Downloads",
+            displayMode: .folder,
+            contentViewMode: .grid
+        ))
+        trailingItems.append(.trash())
+        preferences.trailingItems = trailingItems
+
         refreshPinnedTilesFromPreferences()
         refreshTrailingTilesFromPreferences()
         rebuildTiles()
@@ -735,6 +775,21 @@ final class TileStore: ObservableObject {
         preferences.pinnedItems = pinnedItems
         refreshPinnedTilesFromPreferences()
         rebuildTiles()
+    }
+
+    func smartOrganizePinnedItems() {
+        let existingItems = preferences.pinnedItems
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let organizedItems = await PinnedDockSmartOrganizerService.shared.organize(items: existingItems)
+            guard organizedItems != self.preferences.pinnedItems else {
+                return
+            }
+
+            self.preferences.pinnedItems = organizedItems
+            self.refreshPinnedTilesFromPreferences()
+            self.rebuildTiles()
+        }
     }
 
     func setTrailingTileOrder(ids: [String]) {

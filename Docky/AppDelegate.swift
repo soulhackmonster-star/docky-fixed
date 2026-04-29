@@ -215,6 +215,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSLog("[Docky] Seeded dummy debug layout")
     }
 
+    @objc private func loadDemoDebugLayout(_ sender: Any?) {
+        TileStore.shared.loadDemoDebugLayout()
+        NSLog("[Docky] Loaded demo debug layout")
+    }
+
+    @objc private func seedDummyWidgetDebugContent(_ sender: Any?) {
+        RemindersService.shared.seedDummyDebugSnapshot()
+        CalendarService.shared.seedDummyDebugSnapshot()
+        WeatherService.shared.seedDummyDebugSnapshot()
+        NSLog("[Docky] Seeded dummy widget debug content")
+    }
+
     @objc private func setFreeProductMode(_ sender: Any?) {
         ProductService.shared.setDebugTier(.free)
         NSLog("[Docky] Switched debug product tier to Free")
@@ -268,6 +280,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             keyEquivalent: ""
         )
         seedDummyLayoutItem.target = self
+
+        let loadDemoLayoutItem = NSMenuItem(
+            title: "Load Demo Layout",
+            action: #selector(loadDemoDebugLayout(_:)),
+            keyEquivalent: ""
+        )
+        loadDemoLayoutItem.target = self
+
+        let seedDummyWidgetContentItem = NSMenuItem(
+            title: "Seed Widget Demo Content",
+            action: #selector(seedDummyWidgetDebugContent(_:)),
+            keyEquivalent: ""
+        )
+        seedDummyWidgetContentItem.target = self
 
         let productModeMenu = NSMenu(title: "Product Mode")
 
@@ -323,6 +349,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         debugMenu.addItem(pinEveryAppItem)
         debugMenu.addItem(resetPinnedItemsItem)
         debugMenu.addItem(seedDummyLayoutItem)
+        debugMenu.addItem(loadDemoLayoutItem)
+        debugMenu.addItem(seedDummyWidgetContentItem)
         debugMenu.addItem(productModeItem)
         debugMenu.addItem(.separator())
         debugMenu.addItem(quitItem)

@@ -73,6 +73,12 @@ final class RemindersService: ObservableObject {
     }
 
     func completeReminder(identifier: String) async -> Bool {
+        #if DEBUG
+        if completeDummyReminder(identifier: identifier) {
+            return true
+        }
+        #endif
+
         guard let reminder = eventStore.calendarItem(withIdentifier: identifier) as? EKReminder else {
             return false
         }
@@ -194,12 +200,20 @@ final class RemindersService: ObservableObject {
                 comesBefore(lhs, rhs, now: now)
             }
 
+        return makeSnapshot(from: items, now: now)
+    }
+
+    private static func makeSnapshot(from items: [ReminderItemSnapshot], now: Date) -> RemindersSnapshot {
+        let sortedItems = items.sorted { lhs, rhs in
+            comesBefore(lhs, rhs, now: now)
+        }
+
         var overdueCount = 0
         var dueTodayCount = 0
         var upcomingCount = 0
         var unscheduledCount = 0
 
-        for item in items {
+        for item in sortedItems {
             switch item.timingCategory(relativeTo: now) {
             case .overdue:
                 overdueCount += 1
@@ -213,13 +227,73 @@ final class RemindersService: ObservableObject {
         }
 
         return RemindersSnapshot(
-            items: items,
+            items: sortedItems,
             overdueCount: overdueCount,
             dueTodayCount: dueTodayCount,
             upcomingCount: upcomingCount,
             unscheduledCount: unscheduledCount
         )
     }
+
+    #if DEBUG
+    func seedDummyDebugSnapshot() {
+        pendingRefreshTask?.cancel()
+        pendingRefreshTask = nil
+
+        let now = Date()
+        let calendar = Calendar.autoupdatingCurrent
+        let items = [
+            ReminderItemSnapshot(
+                identifier: "\(Self.debugReminderIdentifierPrefix)1",
+                title: "Send the demo cut to the team",
+                dueDate: calendar.date(byAdding: .minute, value: -45, to: now),
+                hasDueTime: true,
+                listTitle: "Work",
+                priority: 1
+            ),
+            ReminderItemSnapshot(
+                identifier: "\(Self.debugReminderIdentifierPrefix)2",
+                title: "Finalize voiceover notes",
+                dueDate: calendar.date(byAdding: .minute, value: 90, to: now),
+                hasDueTime: true,
+                listTitle: "Production",
+                priority: 5
+            ),
+            ReminderItemSnapshot(
+                identifier: "\(Self.debugReminderIdentifierPrefix)3",
+                title: "Book customer teaser post",
+                dueDate: calendar.date(byAdding: .day, value: 1, to: now),
+                hasDueTime: false,
+                listTitle: "Launch",
+                priority: 0
+            )
+        ]
+
+        snapshot = Self.makeSnapshot(from: items, now: now)
+        lastRefreshDate = now
+        isLoading = false
+        lastErrorDescription = nil
+    }
+
+    private func completeDummyReminder(identifier: String) -> Bool {
+        guard identifier.hasPrefix(Self.debugReminderIdentifierPrefix),
+              let snapshot,
+              snapshot.items.contains(where: { $0.identifier == identifier }) else {
+            return false
+        }
+
+        self.snapshot = Self.makeSnapshot(
+            from: snapshot.items.filter { $0.identifier != identifier },
+            now: Date()
+        )
+        lastRefreshDate = Date()
+        isLoading = false
+        lastErrorDescription = nil
+        return true
+    }
+
+    private static let debugReminderIdentifierPrefix = "debug-reminder-"
+    #endif
 
     private static func comesBefore(
         _ lhs: ReminderItemSnapshot,
@@ -322,6 +396,24 @@ struct ReminderItemSnapshot: Identifiable, Equatable {
         listTitle = reminder.calendar.title
         priority = reminder.priority
     }
+
+    #if DEBUG
+    init(
+        identifier: String,
+        title: String,
+        dueDate: Date?,
+        hasDueTime: Bool,
+        listTitle: String,
+        priority: Int
+    ) {
+        self.identifier = identifier
+        self.title = title
+        self.dueDate = dueDate
+        self.hasDueTime = hasDueTime
+        self.listTitle = listTitle
+        self.priority = priority
+    }
+    #endif
 
     func timingCategory(
         relativeTo now: Date,

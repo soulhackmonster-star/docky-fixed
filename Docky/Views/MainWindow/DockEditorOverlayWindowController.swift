@@ -463,19 +463,8 @@ private struct DockEditorOverlayView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let cutoutFrame = state.dockFrame
-            let cornerRadius = preferences.windowClipShape.resolvedCornerRadius(
-                base: preferences.windowCornerRadius,
-                maximum: min(cutoutFrame.width, cutoutFrame.height) / 2
-            )
-
             ZStack {
-                OverlayCutoutShape(cutoutFrame: cutoutFrame, cornerRadius: cornerRadius)
-                    .fill(.ultraThinMaterial, style: FillStyle(eoFill: true))
-                    .overlay {
-                        OverlayCutoutShape(cutoutFrame: cutoutFrame, cornerRadius: cornerRadius)
-                            .fill(Color.black.opacity(0.34), style: FillStyle(eoFill: true))
-                    }
+                Color.clear
                     .frame(width: proxy.size.width, height: proxy.size.height)
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -522,7 +511,8 @@ private struct DockEditorOverlayView: View {
     private func editorBrowser(in availableSize: CGSize) -> some View {
         DockEditorBrowserView(
             state: state,
-            panelSize: browserSize(in: availableSize)
+            panelSize: browserSize(in: availableSize),
+            position: position
         )
     }
 
@@ -533,9 +523,9 @@ private struct DockEditorOverlayView: View {
     private var paletteInset: CGFloat {
         switch position {
         case .bottom, .top:
-            state.dockFrame.height + paletteDockGap
+            state.dockFrame.height - paletteDockGap
         case .left, .right:
-            state.dockFrame.width + paletteDockGap
+            state.dockFrame.width - paletteDockGap
         }
     }
 
@@ -556,26 +546,6 @@ private struct DockEditorOverlayView: View {
             width: min(position.isVertical ? 960 : 1120, availableWidth),
             height: min(720, availableHeight - panelMargin)
         )
-    }
-}
-
-private struct OverlayCutoutShape: Shape {
-    let cutoutFrame: CGRect
-    let cornerRadius: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.addRect(rect)
-
-        if !cutoutFrame.isEmpty {
-            path.addRoundedRect(
-                in: cutoutFrame,
-                cornerSize: CGSize(width: cornerRadius, height: cornerRadius),
-                style: .continuous
-            )
-        }
-
-        return path
     }
 }
 
@@ -632,6 +602,7 @@ private struct DockEditorGallerySection: Identifiable {
 private struct DockEditorBrowserView: View {
     @ObservedObject var state: DockEditorOverlayState
     let panelSize: CGSize
+    let position: ResolvedDockWindowPosition
 
     @ObservedObject private var editMode = DockEditModeService.shared
 
@@ -673,7 +644,16 @@ private struct DockEditorBrowserView: View {
             }
         }
         .frame(width: panelSize.width, height: panelSize.height)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .background(
+            .windowBackground,
+            in: .rect(
+                topLeadingRadius: position == .top || position == .left ? 0 : 30,
+                bottomLeadingRadius: position == .bottom || position == .left ? 0 : 30,
+                bottomTrailingRadius: position == .bottom || position == .right ? 0 : 30,
+                topTrailingRadius: position == .top || position == .right ? 0 : 30,
+                style: .continuous
+            )
+        )
         .overlay {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .strokeBorder(.white.opacity(0.14), lineWidth: 1)
@@ -762,7 +742,7 @@ private struct DockEditorBrowserView: View {
 
     private var horizontalSeparator: some View {
         Rectangle()
-            .fill(.white.opacity(0.08))
+            .fill(.primary.opacity(0.08))
             .frame(height: 1)
     }
 

@@ -162,6 +162,30 @@ final class CalendarService: ObservableObject {
         RunLoop.main.add(timer, forMode: .common)
         rolloverTimer = timer
     }
+
+    #if DEBUG
+    func seedDummyDebugSnapshot() {
+        let now = Date()
+        let calendar = Calendar.autoupdatingCurrent
+        let startDate = calendar.date(byAdding: .minute, value: 18, to: now) ?? now.addingTimeInterval(1_080)
+        let endDate = calendar.date(byAdding: .minute, value: 63, to: now) ?? now.addingTimeInterval(3_780)
+
+        nextEvent = CalendarEventSnapshot(
+            title: "Docky demo review",
+            startDate: startDate,
+            endDate: endDate,
+            isAllDay: false,
+            location: "Studio A",
+            calendarTitle: "Work",
+            color: NSColor.systemBlue,
+            quickJoinURL: URL(string: "https://zoom.us/j/5551234567")
+        )
+        lastRefreshDate = now
+        isLoading = false
+        lastErrorDescription = nil
+        scheduleRollover(after: endDate)
+    }
+    #endif
 }
 
 struct CalendarEventSnapshot: Equatable {
@@ -185,6 +209,28 @@ struct CalendarEventSnapshot: Equatable {
         color = NSColor(cgColor: event.calendar.cgColor) ?? .white
         quickJoinURL = Self.resolveQuickJoinURL(for: event, location: location)
     }
+
+    #if DEBUG
+    init(
+        title: String,
+        startDate: Date,
+        endDate: Date,
+        isAllDay: Bool,
+        location: String,
+        calendarTitle: String,
+        color: NSColor,
+        quickJoinURL: URL?
+    ) {
+        self.title = title
+        self.startDate = startDate
+        self.endDate = endDate
+        self.isAllDay = isAllDay
+        self.location = location
+        self.calendarTitle = calendarTitle
+        self.color = color
+        self.quickJoinURL = quickJoinURL
+    }
+    #endif
 
     private nonisolated static func resolveQuickJoinURL(for event: EKEvent, location: String) -> URL? {
         if let directURL = normalizedJoinURL(event.url) {
