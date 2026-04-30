@@ -7,24 +7,27 @@ import AppKit
 import AVKit
 import SwiftUI
 
-private struct PermissionsCardSizePreferenceKey: PreferenceKey {
-    static var defaultValue: CGSize = .zero
+private struct PermissionsWindowFramePreference: Equatable {
+    let frame: CGRect
+    let layoutKey: String
+}
 
-    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+private struct PermissionsWindowFramePreferenceKey: PreferenceKey {
+    static var defaultValue = PermissionsWindowFramePreference(frame: .zero, layoutKey: "")
+
+    static func reduce(value: inout PermissionsWindowFramePreference, nextValue: () -> PermissionsWindowFramePreference) {
         value = nextValue()
     }
 }
 
 struct PermissionsView: View {
     @ObservedObject private var service = PermissionsService.shared
-    @ObservedObject var presentationModel: PermissionsWindowPresentationModel
     @State private var currentIndex = 0
-    @State private var backgroundIsVisible = false
-    @State private var cardIsVisible = false
     @State private var isDismissing = false
 
     let steps: [Permission]
-    let onCardSizeChange: (CGSize) -> Void
+    let topBarAdjustment: CGFloat
+    let onWindowFrameChange: (CGRect) -> Void
     let onOpenSystemSettings: (Permission) -> Void
     let onComplete: () -> Void
 
@@ -33,37 +36,39 @@ struct PermissionsView: View {
     private var isLastStep: Bool { currentIndex == steps.count - 1 }
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                onboardingBackground
-                    .opacity(backgroundOpacity)
+        cardView
+        .padding(.top, topBarAdjustment)
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .preference(
+                        key: PermissionsWindowFramePreferenceKey.self,
+                        value: PermissionsWindowFramePreference(
+                            frame: proxy.frame(in: .local),
+                            layoutKey: "\(currentIndex)-\(statusLabel)"
+                        )
+                    )
+            }
+        )
+        .onAppear {
+            service.refresh()
+        }
+        .onPreferenceChange(PermissionsWindowFramePreferenceKey.self) { preference in
+            guard !preference.frame.isEmpty else { return }
+            onWindowFrameChange(preference.frame)
+        }
+        .task(id: currentIndex) {
+            if (step == .finderAutomation || step == .location), status == .notDetermined {
+                _ = await service.requestPermission(for: step)
+            }
 
-                cardView
-                    .position(cardPosition(in: proxy.size))
+            if step == .systemEventsAutomation,
+               status == .notDetermined,
+               service.status(for: .accessibility) == .granted {
+                _ = await service.requestPermission(for: step)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .ignoresSafeArea()
-            .onAppear {
-                service.refresh()
-                runEntranceAnimationIfNeeded()
-            }
-            .onPreferenceChange(PermissionsCardSizePreferenceKey.self) { size in
-                guard size != .zero else { return }
-                onCardSizeChange(size)
-            }
-            .task(id: currentIndex) {
-                if (step == .finderAutomation || step == .location), status == .notDetermined {
-                    _ = await service.requestPermission(for: step)
-                }
 
-                if step == .systemEventsAutomation,
-                   status == .notDetermined,
-                   service.status(for: .accessibility) == .granted {
-                    _ = await service.requestPermission(for: step)
-                }
-
-                await pollUntilAdvance()
-            }
+            await pollUntilAdvance()
         }
     }
 
@@ -77,7 +82,7 @@ struct PermissionsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.08))
+                .strokeBorder(Color.secondary.opacity(0.12))
         )
         .overlay(alignment: .topLeading) {
             quitButton
@@ -87,37 +92,6 @@ struct PermissionsView: View {
             skipButton
                 .padding(18)
         }
-        .shadow(color: Color.black.opacity(0.38), radius: 36, y: 24)
-        .opacity(cardIsVisible ? 1 : 0)
-        .offset(y: cardEntranceOffset)
-        .animation(.easeInOut(duration: 0.18), value: presentationModel.companionCardFrame)
-        .background(
-            GeometryReader { proxy in
-                Color.clear
-                    .preference(key: PermissionsCardSizePreferenceKey.self, value: proxy.size)
-            }
-        )
-    }
-
-    private var backgroundOpacity: Double {
-        return backgroundIsVisible ? 1 : 0
-    }
-
-    private var cardEntranceOffset: CGFloat {
-        cardIsVisible ? 0 : 28
-    }
-
-    private func cardPosition(in containerSize: CGSize) -> CGPoint {
-        guard presentationModel.companionMode,
-              let frame = presentationModel.companionCardFrame,
-              !presentationModel.screenFrame.isEmpty else {
-            return CGPoint(x: containerSize.width / 2, y: containerSize.height / 2)
-        }
-
-        return CGPoint(
-            x: frame.midX - presentationModel.screenFrame.minX,
-            y: presentationModel.screenFrame.maxY - frame.midY
-        )
     }
 
     private var topSection: some View {
@@ -164,20 +138,6 @@ struct PermissionsView: View {
         ZStack(alignment: .topLeading) {
             if let mediaResourceName {
                 LoopingVideoView(resourceName: mediaResourceName, fileExtension: "mp4")
-                    .overlay {
-                        LinearGradient(
-                            colors: [Color.black.opacity(0.34), Color.clear, Color.black.opacity(0.18)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    }
-                    .overlay(alignment: .bottom) {
-                        LinearGradient(
-                            colors: [Color.clear, Color.black.opacity(0.18)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    }
             } else {
                 fallbackMediaSurface
             }
@@ -186,11 +146,7 @@ struct PermissionsView: View {
 
     private var fallbackMediaSurface: some View {
         ZStack(alignment: .bottomLeading) {
-            LinearGradient(
-                colors: [Color.white.opacity(0.10), Color.black.opacity(0.10)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            Color(nsColor: .controlBackgroundColor)
 
             HStack(alignment: .bottom, spacing: 18) {
                 Image(nsImage: NSWorkspace.shared.icon(forFile: dockyAppURL.path))
@@ -202,93 +158,36 @@ struct PermissionsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Label("Docky Setup", systemImage: "sparkles.rectangle.stack")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(.secondary)
 
                     Text(mediaCaption)
                         .font(.system(size: 24, weight: .semibold))
-                        .foregroundStyle(.white)
                 }
 
                 Spacer()
 
                 Image(systemName: stepSymbolName)
                     .font(.system(size: 40, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.secondary)
                     .frame(width: 84, height: 84)
-                    .background(Color.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.12))
+                            .strokeBorder(Color.secondary.opacity(0.12))
                     )
             }
             .padding(22)
         }
     }
 
-    private var onboardingBackground: some View {
-        ZStack {
-            Rectangle()
-                .fill(.thinMaterial)
-
-            LinearGradient(
-                colors: [
-                    Color(red: 0.13, green: 0.13, blue: 0.16).opacity(0.18),
-                    Color(red: 0.06, green: 0.06, blue: 0.08).opacity(0.18),
-                    Color.black.opacity(0.18)
-                ],
-                startPoint: .bottom,
-                endPoint: .top
-            )
-            .opacity(0.94)
-
-            Rectangle()
-                .fill(Color.white)
-                .colorEffect(
-                    Shader(
-                        function: ShaderFunction(library: .default, name: "onboardingGrain"),
-                        arguments: [
-                            .float(1.15),
-                            .float(0.06)
-                        ]
-                    )
-                )
-                .blendMode(.overlay)
-                .opacity(0.28)
-        }
-    }
-
     private var cardBackground: some ShapeStyle {
-        Color(red: 0.09, green: 0.09, blue: 0.11)
-    }
-
-    private func runEntranceAnimationIfNeeded() {
-        guard !backgroundIsVisible, !cardIsVisible else { return }
-
-        withAnimation(.easeOut(duration: 1.0)) {
-            backgroundIsVisible = true
-        }
-
-        withAnimation(.easeOut(duration: 1.15).delay(0.24)) {
-            cardIsVisible = true
-        }
+        Color(nsColor: .windowBackgroundColor)
     }
 
     private func dismissOnboarding() {
         guard !isDismissing else { return }
         isDismissing = true
-
-        withAnimation(.easeInOut(duration: 0.35)) {
-            cardIsVisible = false
-        }
-
-        withAnimation(.easeInOut(duration: 0.45).delay(0.08)) {
-            backgroundIsVisible = false
-        }
-
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(460))
-            onComplete()
-        }
+        onComplete()
     }
 
     private func openSystemSettings() {
@@ -301,7 +200,7 @@ struct PermissionsView: View {
             Button(systemSettingsButtonTitle) {
                 openSystemSettings()
             }
-            .glassTextButtonStyle()
+            .onboardingButtonStyle()
 
             if step == .finderAutomation || step == .systemEventsAutomation || step == .screenCapture || step == .location {
                 requestButton
@@ -360,21 +259,21 @@ struct PermissionsView: View {
     private var footer: some View {
         HStack(spacing: 12) {
             Button("Re-check") { service.refresh() }
-                .glassTextButtonStyle()
+                .onboardingButtonStyle()
 
             Spacer()
 
             if status == .granted {
                 Button(primaryActionTitle) { advance() }
                     .keyboardShortcut(.return)
-                    .glassTextButtonStyle()
+                    .onboardingButtonStyle()
             }
         }
     }
 
     private var skipButton: some View {
         Button("Skip") { advance() }
-            .glassTextButtonStyle()
+            .onboardingButtonStyle()
     }
 
     private var quitButton: some View {
@@ -387,7 +286,8 @@ struct PermissionsView: View {
         }
         .buttonStyle(.plain)
         .padding(9)
-        .glassEffect()
+        .background(Color(nsColor: .controlBackgroundColor), in: Circle())
+        .overlay(Circle().strokeBorder(Color.secondary.opacity(0.12)))
     }
 
     private var grantMethodLabel: String? {
@@ -409,7 +309,7 @@ struct PermissionsView: View {
                     _ = await service.requestPermission(for: step)
                 }
             }
-            .glassTextButtonStyle()
+            .onboardingButtonStyle()
         }
     }
 
@@ -754,7 +654,7 @@ private struct PageDots: View {
         HStack(spacing: 8) {
             ForEach(0..<totalPages, id: \.self) { index in
                 Capsule(style: .continuous)
-                    .fill(index == currentIndex ? Color.white.opacity(0.95) : Color.white.opacity(0.30))
+                    .fill(index == currentIndex ? Color.accentColor : Color.secondary.opacity(0.30))
                     .frame(width: index == currentIndex ? 24 : 8, height: 8)
             }
         }
@@ -764,10 +664,8 @@ private struct PageDots: View {
 }
 
 private extension View {
-    func glassTextButtonStyle() -> some View {
-        buttonStyle(.plain)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .glassEffect()
+    func onboardingButtonStyle() -> some View {
+        buttonStyle(.bordered)
+            .controlSize(.large)
     }
 }
