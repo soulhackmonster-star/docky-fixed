@@ -1312,6 +1312,14 @@ final class DockyPreferences: ObservableObject {
         syncOpenAtLoginPreferenceFromSystem()
     }
 
+    func enableOpenAtLoginOnFirstLaunchIfNeeded() {
+        guard defaults.object(forKey: Keys.opensAtLogin) == nil else {
+            return
+        }
+
+        opensAtLogin = true
+    }
+
     func resetToDefaults() {
         tileVerticalPadding = DefaultValues.tileVerticalPadding
         tileSpacing = DefaultValues.tileSpacing

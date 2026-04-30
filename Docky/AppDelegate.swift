@@ -132,6 +132,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func showMainWindow() {
         mainWindowController = makeMainWindowController()
         mainWindowController?.showWindow(self)
+        DockyPreferences.shared.enableOpenAtLoginOnFirstLaunchIfNeeded()
     }
 
     private func makeMainWindowController() -> MainWindowController? {
