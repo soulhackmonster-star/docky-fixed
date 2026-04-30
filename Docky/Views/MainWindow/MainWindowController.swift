@@ -9,6 +9,7 @@ import AppKit
 
 final class MainWindowController: NSWindowController {
     private var dockEditorOverlayWindowController: DockEditorOverlayWindowController?
+    private var dockEditorHintWindowController: DockEditorHintWindowController?
     private var launchpadOverlayWindowController: LaunchpadOverlayWindowController?
     private var smartOrganizeProgressChipWindowController: SmartOrganizeProgressChipWindowController?
     private var windowSwitcherOverlayWindowController: WindowSwitcherOverlayWindowController?
@@ -21,6 +22,7 @@ final class MainWindowController: NSWindowController {
         }
 
         dockEditorOverlayWindowController = DockEditorOverlayWindowController(mainWindow: mainWindow)
+        dockEditorHintWindowController = DockEditorHintWindowController(mainWindow: mainWindow)
         launchpadOverlayWindowController = LaunchpadOverlayWindowController(mainWindow: mainWindow)
         smartOrganizeProgressChipWindowController = SmartOrganizeProgressChipWindowController(mainWindow: mainWindow)
         windowSwitcherOverlayWindowController = WindowSwitcherOverlayWindowController(mainWindow: mainWindow)
@@ -29,5 +31,10 @@ final class MainWindowController: NSWindowController {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         nil
+    }
+
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        dockEditorHintWindowController?.scheduleInitialPresentation()
     }
 }

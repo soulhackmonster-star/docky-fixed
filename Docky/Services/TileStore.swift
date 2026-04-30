@@ -139,6 +139,14 @@ final class TileStore: ObservableObject {
         reloadSystemDockState(syncPreferencesFromSystemDock: true)
     }
 
+    func syncPreferencesFromSystemDockIfNeeded() {
+        guard preferences.pinnedItems.isEmpty, preferences.trailingItems.isEmpty else {
+            return
+        }
+
+        reloadSystemDockState(syncPreferencesFromSystemDock: true)
+    }
+
     private func reloadSystemDockState(syncPreferencesFromSystemDock: Bool) {
         guard let plist = DockPlistReader.read() else {
             dockPinnedTilesByBundleIdentifier = [:]

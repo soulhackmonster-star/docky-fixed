@@ -1019,6 +1019,14 @@ final class DockyPreferences: ObservableObject {
         }
     }
 
+    /// Whether Docky has already shown the divider edit hint chip.
+    @Published var hasSeenDockEditorHint: Bool {
+        didSet {
+            guard hasSeenDockEditorHint != oldValue else { return }
+            defaults.set(hasSeenDockEditorHint, forKey: Keys.hasSeenDockEditorHint)
+        }
+    }
+
     private let defaults: UserDefaults
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -1160,6 +1168,7 @@ final class DockyPreferences: ObservableObject {
         static let widgetPlacements = "docky.widgetPlacements"
         static let appWidgetDisplays = "docky.appWidgetDisplays"
         static let trailingItems = "docky.trailingItems"
+        static let hasSeenDockEditorHint = "docky.hasSeenDockEditorHint"
     }
 
     private enum DefaultValues {
@@ -1200,6 +1209,7 @@ final class DockyPreferences: ObservableObject {
         static let widgetPlacements: [WidgetPlacement] = []
         static let appWidgetDisplays: [AppWidgetDisplay] = []
         static let trailingItems: [TrailingTileItem] = []
+        static let hasSeenDockEditorHint = false
     }
 
     private init() {
@@ -1241,6 +1251,7 @@ final class DockyPreferences: ObservableObject {
         let storedWidgetPlacements = defaults.data(forKey: Keys.widgetPlacements)
         let storedAppWidgetDisplays = defaults.data(forKey: Keys.appWidgetDisplays)
         let storedTrailingItems = defaults.data(forKey: Keys.trailingItems)
+        let storedHasSeenDockEditorHint = defaults.object(forKey: Keys.hasSeenDockEditorHint) as? Bool
         let initialPinnedAppBundleIdentifiers = storedPinnedAppBundleIdentifiers ?? DefaultValues.pinnedAppBundleIdentifiers
         let initialPinnedItems = Self.decodePinnedItems(from: storedPinnedItems)
             ?? initialPinnedAppBundleIdentifiers.map(PinnedTileItem.app(bundleIdentifier:))
@@ -1281,6 +1292,7 @@ final class DockyPreferences: ObservableObject {
         self.widgetPlacements = Self.decodeWidgetPlacements(from: storedWidgetPlacements) ?? DefaultValues.widgetPlacements
         self.appWidgetDisplays = Self.decodeAppWidgetDisplays(from: storedAppWidgetDisplays) ?? DefaultValues.appWidgetDisplays
         self.trailingItems = Self.decodeTrailingItems(from: storedTrailingItems) ?? DefaultValues.trailingItems
+        self.hasSeenDockEditorHint = storedHasSeenDockEditorHint ?? DefaultValues.hasSeenDockEditorHint
     }
 
     func applySystemDockVisibilityPreference() {
@@ -1334,6 +1346,7 @@ final class DockyPreferences: ObservableObject {
         showsWindowSwitcherFocusPreview = DefaultValues.showsWindowSwitcherFocusPreview
         windowSwitcherPreviewMode = DefaultValues.windowSwitcherPreviewMode
         appWidgetDisplays = DefaultValues.appWidgetDisplays
+        hasSeenDockEditorHint = DefaultValues.hasSeenDockEditorHint
     }
 
     private func syncSystemDockPositionIfNeeded() {
