@@ -182,7 +182,18 @@ struct TileContainerView: View {
     }
 
     private func contentAlignment(in proxy: GeometryProxy, scrollableSectionLayout: ScrollableSectionLayout?) -> Alignment {
-        shouldCenterContent(in: proxy, scrollableSectionLayout: scrollableSectionLayout) ? .center : .topLeading
+        let centersContent = shouldCenterContent(in: proxy, scrollableSectionLayout: scrollableSectionLayout)
+
+        switch position {
+        case .bottom:
+            return centersContent ? .bottom : .bottomLeading
+        case .top:
+            return centersContent ? .top : .topLeading
+        case .left:
+            return centersContent ? .leading : .topLeading
+        case .right:
+            return centersContent ? .trailing : .topTrailing
+        }
     }
 
     private func shouldCenterContent(in proxy: GeometryProxy, scrollableSectionLayout: ScrollableSectionLayout?) -> Bool {
@@ -197,8 +208,10 @@ struct TileContainerView: View {
 
     @ViewBuilder
     private func contentComponents(scrollableSectionLayout: ScrollableSectionLayout?) -> some View {
+        let count = Double(layoutComponents.count)
         ForEach(layoutComponents) { component in
             componentView(component, scrollableSectionLayout: scrollableSectionLayout)
+                .zIndex(count - Double(component.index ?? 0))
         }
     }
 
@@ -207,6 +220,7 @@ struct TileContainerView: View {
         switch component {
         case .divider(let tile):
             tileView(for: tile)
+                .zIndex(-1)
         case .section(let section):
             if let scrollableSectionLayout, scrollableSectionLayout.id == section.id {
                 scrollableSectionView(section, axisLength: scrollableSectionLayout.axisLength)
@@ -678,7 +692,8 @@ struct TileContainerView: View {
 
         func appendCurrentSection() {
             guard !currentTiles.isEmpty else { return }
-            components.append(.section(TileLayoutSection(id: currentSectionID, tiles: currentTiles)))
+            let idx = components.count
+            components.append(.section(TileLayoutSection(index: idx, id: currentSectionID, tiles: currentTiles)))
             currentTiles = []
         }
 
@@ -736,7 +751,7 @@ struct TileContainerView: View {
             return nil
         }
 
-        return ScrollableSectionLayout(id: largestSection.id, axisLength: viewportAxisLength)
+        return ScrollableSectionLayout(index: largestSection.index, id: largestSection.id, axisLength: viewportAxisLength)
     }
 
     private func totalAxisLength(for components: [TileLayoutComponent]) -> CGFloat {
@@ -1990,6 +2005,7 @@ struct TileContainerView: View {
 }
 
 private struct TileLayoutSection: Identifiable {
+    let index: Int
     let id: String
     let tiles: [Tile]
 }
@@ -2006,9 +2022,19 @@ private enum TileLayoutComponent: Identifiable {
             tile.id
         }
     }
+
+    var index: Int? {
+        switch self {
+        case .section(let section):
+            return section.index
+        default:
+            return nil
+        }
+    }
 }
 
 private struct ScrollableSectionLayout {
+    let index: Int
     let id: String
     let axisLength: CGFloat
 }

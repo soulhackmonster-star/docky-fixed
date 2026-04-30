@@ -45,7 +45,7 @@ struct SmartStackTileView: View {
         } else {
             HStack(spacing: 8) {
                 GeometryReader { proxy in
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                         ForEach(Array(tile.widgets.enumerated()), id: \.element.identifier) { index, widget in
                             WidgetTileView(
                                 tile: widget,

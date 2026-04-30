@@ -23,11 +23,15 @@ struct TileView: View {
     @ObservedObject private var editMode = DockEditModeService.shared
     @State private var isHovering = false
     @State private var isTooltipPresented = false
+    @State private var tooltipDelayTask: Task<Void, Never>?
     @State private var isFolderPopoverPresented = false
     @State private var isFolderListMenuPresented = false
     @State private var isAppFolderPopoverPresented = false
     @State private var isAppFolderListMenuPresented = false
     @State private var isContextMenuPresented = false
+    @State private var isGrown = false
+    @State private var hoverEnterTask: Task<Void, Never>?
+    @State private var hoverExitTask: Task<Void, Never>?
     @State private var folderSnapshot: FolderContentsSnapshot = .loaded([])
     @State private var lastFolderPopoverDismissedAt: TimeInterval = 0
 
@@ -370,6 +374,31 @@ struct TileView: View {
     }
 
     var body: some View {
+        if isHoverGrowEligible {
+            hoverGrowingBody
+        } else {
+            tileBody
+        }
+    }
+
+    private var hoverGrowingBody: some View {
+        GeometryReader { geo in
+            tileBody
+                .frame(
+                    width: isGrown ? hoverGrowExtent(in: geo.size) : geo.size.width,
+                    height: isGrown ? hoverGrowExtent(in: geo.size) : geo.size.height
+                )
+                .frame(
+                    width: geo.size.width,
+                    height: geo.size.height,
+                    alignment: hoverGrowAnchorAlignment
+                )
+                .animation(.spring(response: 0.32, dampingFraction: 0.78), value: isGrown)
+        }
+        .zIndex(isGrown ? 1000 : 0)
+    }
+
+    private var tileBody: some View {
         laidOutContent
             .opacity(isLockedProductPlacement ? 0.38 : 1)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -395,13 +424,21 @@ struct TileView: View {
             .onHover(perform: updateHoverState)
             .onTapGesture(perform: handleTap)
             .onDisappear {
+                hoverEnterTask?.cancel()
+                hoverEnterTask = nil
+                hoverExitTask?.cancel()
+                hoverExitTask = nil
                 isHovering = false
+                isGrown = false
                 isTooltipPresented = false
                 isFolderPopoverPresented = false
                 isFolderListMenuPresented = false
                 isAppFolderPopoverPresented = false
                 isAppFolderListMenuPresented = false
                 isContextMenuPresented = false
+                if isHoverGrowEligible {
+                    WidgetHoverGrowService.shared.setHovered(false, identifier: tile.id)
+                }
             }
             .onChange(of: isFolderPopoverPresented) { _, isPresented in
                 updateTooltipPresentation()
@@ -823,9 +860,91 @@ struct TileView: View {
         }
     }
 
-    private func updateHoverState(isHovering: Bool) {
+    private func updateHoverState(isHovering newValue: Bool) {
+        guard isHoverGrowEligible else {
+            applyHoverState(newValue)
+            return
+        }
+
+        if newValue {
+            hoverExitTask?.cancel()
+            hoverExitTask = nil
+            applyHoverState(true)
+            scheduleGrowEnter()
+            return
+        }
+
+        hoverEnterTask?.cancel()
+        hoverEnterTask = nil
+
+        hoverExitTask?.cancel()
+        hoverExitTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled else { return }
+            applyHoverState(false)
+            applyGrownState(false)
+        }
+    }
+
+    private func scheduleGrowEnter() {
+        hoverEnterTask?.cancel()
+        let delaySeconds = max(0, preferences.widgetHoverGrowDelay)
+        if delaySeconds == 0 {
+            applyGrownState(true)
+            return
+        }
+        hoverEnterTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(delaySeconds))
+            guard !Task.isCancelled else { return }
+            applyGrownState(true)
+        }
+    }
+
+    private func applyHoverState(_ isHovering: Bool) {
         self.isHovering = isHovering
         updateTooltipPresentation()
+    }
+
+    private func applyGrownState(_ grown: Bool) {
+        guard isGrown != grown else { return }
+        isGrown = grown
+        WidgetHoverGrowService.shared.setHovered(grown, identifier: tile.id)
+    }
+
+    private var isHoverGrowEligible: Bool {
+        switch tile.content {
+        case .widget:
+            return true
+        case .app(let app) where app.displayedWidget != nil:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private var hoverGrowSpanCount: Int {
+        switch tile.content {
+        case .widget(let widget):
+            return widget.effectiveSpan.rawValue
+        case .app(let app):
+            return app.displayedWidget?.span.rawValue ?? 1
+        default:
+            return 1
+        }
+    }
+
+    private func hoverGrowExtent(in size: CGSize) -> CGFloat {
+        let baseTileWidth = size.width / CGFloat(max(hoverGrowSpanCount, 1))
+        return baseTileWidth * 3
+    }
+
+    private var hoverGrowAnchorAlignment: Alignment {
+        switch position {
+        case .top: .top
+        case .bottom: .bottom
+        case .left: .leading
+        case .right: .trailing
+        }
     }
 
     private func updateContextMenuPresentation(isPresented: Bool) {
@@ -834,13 +953,41 @@ struct TileView: View {
     }
 
     private func updateTooltipPresentation() {
-        isTooltipPresented = isHovering
+        tooltipDelayTask?.cancel()
+        tooltipDelayTask = nil
+
+        let shouldShow = isHovering
             && tooltipTitle != nil
             && !isFolderPopoverPresented
             && !isFolderListMenuPresented
             && !isAppFolderPopoverPresented
             && !isAppFolderListMenuPresented
             && !isContextMenuPresented
+
+        guard shouldShow else {
+            isTooltipPresented = false
+            return
+        }
+
+        if delaysTooltipForGrowAnimation {
+            let delaySeconds = max(0, preferences.widgetHoverGrowDelay) + 0.35
+            tooltipDelayTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(delaySeconds))
+                guard !Task.isCancelled else { return }
+                isTooltipPresented = true
+            }
+        } else {
+            isTooltipPresented = true
+        }
+    }
+
+    private var delaysTooltipForGrowAnimation: Bool {
+        switch tile.content {
+        case .widget, .smartStack:
+            return true
+        default:
+            return false
+        }
     }
 
     private func handleTap() {

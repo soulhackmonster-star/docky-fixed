@@ -19,17 +19,27 @@ struct MainWindowView: View {
     var body: some View {
         let cornerRadius = effectiveCornerRadius
         let chromeFrameSize = resolvedChromeFrameSize
+        let dockEdge = dockEdgeAlignment
 
-        ZStack {
+        ZStack(alignment: dockEdge) {
             chromeBackground(cornerRadius: cornerRadius)
                 .frame(width: chromeFrameSize?.width, height: chromeFrameSize?.height)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: dockEdge)
                 .allowsHitTesting(true)
                 .animation(chromeResizeAnimation, value: chromeFrameSize)
 
             TileContainerView()
         }
         .compositingGroup()
+    }
+
+    private var dockEdgeAlignment: Alignment {
+        switch preferences.windowPosition.resolved(systemOrientation: dockSettings.orientation) {
+        case .top: .top
+        case .bottom: .bottom
+        case .left: .leading
+        case .right: .trailing
+        }
     }
 
     @ViewBuilder
