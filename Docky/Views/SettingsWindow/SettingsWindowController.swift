@@ -17,10 +17,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.styleMask.insert(.closable)
         window.styleMask.insert(.miniaturizable)
         window.styleMask.insert(.resizable)
+        window.styleMask.insert(.fullSizeContentView)
         window.title = "Settings"
         window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = false
-        window.toolbarStyle = .preference
+        window.titlebarAppearsTransparent = true
+        window.toolbarStyle = .unified
+        window.toolbar = NSToolbar(identifier: "DockySettingsToolbar")
         window.center()
         window.isReleasedWhenClosed = false
         self.init(window: window)

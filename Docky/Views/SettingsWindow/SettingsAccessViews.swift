@@ -9,10 +9,10 @@ struct ProBadge: View {
     var body: some View {
         Text("Pro")
             .font(.caption.weight(.semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(.primary)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(Color.accentColor.gradient, in: Capsule())
+            .background(Color.primary.opacity(0.20), in: Capsule())
     }
 }
 

@@ -100,6 +100,5 @@ struct WindowManagementSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding(.horizontal, 20)
     }
 }

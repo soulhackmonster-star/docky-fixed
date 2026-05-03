@@ -54,7 +54,6 @@ struct UpdatesSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding(.horizontal, 20)
     }
 
     private func title(for interval: TimeInterval) -> String {

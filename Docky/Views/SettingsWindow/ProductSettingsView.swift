@@ -101,7 +101,6 @@ struct ProductSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding(.horizontal, 20)
         .onAppear(perform: syncFieldsFromService)
         .onChange(of: product.trialExpiresAt) { _, expiresAt in
             guard expiresAt != nil, product.currentTier == .pro else {

@@ -23,7 +23,6 @@ struct PermissionsSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding(.horizontal, 20)
     }
 
     @ViewBuilder

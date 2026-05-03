@@ -76,6 +76,5 @@ struct ActionCatalogSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding(.horizontal, 20)
     }
 }

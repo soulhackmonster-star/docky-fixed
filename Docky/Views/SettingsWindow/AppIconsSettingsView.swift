@@ -35,7 +35,6 @@ struct AppIconsSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding(.horizontal, 20)
     }
 
     private var appEntries: [AppIconSettingsEntry] {

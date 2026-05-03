@@ -142,6 +142,7 @@ private struct SettingsDetailView: View {
             selectedView
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .navigationTitle(pane.title)
     }
 
     @ViewBuilder

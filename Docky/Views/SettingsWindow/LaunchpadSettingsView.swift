@@ -81,6 +81,5 @@ struct LaunchpadSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding(.horizontal, 20)
     }
 }

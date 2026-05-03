@@ -292,7 +292,6 @@ struct BehaviorSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding(.horizontal, 20)
     }
 
     private func spanTitle(for span: TileSpan) -> String {
