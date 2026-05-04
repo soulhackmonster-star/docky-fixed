@@ -172,6 +172,28 @@ struct BehaviorSettingsView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
+                    Text("Maximized Windows")
+                        .font(.headline)
+
+                    Spacer()
+
+                    Picker("Maximized Windows", selection: $preferences.maximizedWindowBehavior) {
+                        ForEach(MaximizedWindowBehavior.allCases) { behavior in
+                            Text(behavior.title).tag(behavior)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                }
+
+                Text(preferences.maximizedWindowBehavior.detail)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 4)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
                     Text("Overflow Behavior")
                         .font(.headline)
 

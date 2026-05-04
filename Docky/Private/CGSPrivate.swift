@@ -27,3 +27,17 @@ func CGWindowListCreateImagePrivate(
     _ windowID: CGWindowID,
     _ imageOption: CGWindowImageOption
 ) -> CGImage?
+
+@_silgen_name("CGSGetWindowAlpha")
+func CGSGetWindowAlpha(
+    _ connection: CGSConnectionID,
+    _ windowID: Int,
+    _ alpha: UnsafeMutablePointer<Float>
+) -> Int32
+
+@_silgen_name("CGSSetWindowAlpha")
+func CGSSetWindowAlpha(
+    _ connection: CGSConnectionID,
+    _ windowID: Int,
+    _ alpha: Float
+) -> Int32

@@ -41,6 +41,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         _ = ProductService.shared
         _ = LaunchpadHotKeyService.shared
         AppUpdateService.shared.checkForUpdatesInBackground()
+        WindowReservationService.shared.start()
 
         DockyPreferences.shared.applySystemDockVisibilityPreference()
         DockyPreferences.shared.applyOpenAtLoginPreference()

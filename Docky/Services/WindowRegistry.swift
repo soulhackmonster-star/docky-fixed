@@ -221,6 +221,24 @@ final class WindowRegistry: ObservableObject {
         return closeViaButton(element)
     }
 
+    /// Resize-and-move via AX. No permission alert: callers (background
+    /// services) want a silent failure when permission is missing.
+    @discardableResult
+    func resize(_ window: AppWindow, to frame: CGRect) -> Bool {
+        guard PermissionsService.shared.accessibility == .granted else { return false }
+
+        var origin = frame.origin
+        var size = frame.size
+        guard let positionValue = AXValueCreate(.cgPoint, &origin),
+              let sizeValue = AXValueCreate(.cgSize, &size)
+        else { return false }
+
+        let element = window.element
+        let posResult = AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, positionValue)
+        let sizeResult = AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, sizeValue)
+        return posResult == .success && sizeResult == .success
+    }
+
     private func closeViaButton(_ windowElement: AXUIElement) -> Bool {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(

@@ -101,9 +101,24 @@ final class MainWindow: NSWindow {
     private var hasResolvedInitialFrame = false
     private var lastPointerScreenFrame: CGRect?
     private var isFullscreenActiveOnTargetScreen = false
+    private var isMaximizedActiveOnTargetScreen = false
 
     private var effectivelyAutohides: Bool {
-        preferences.autohidesWindow || isFullscreenActiveOnTargetScreen
+        preferences.autohidesWindow
+            || isFullscreenActiveOnTargetScreen
+            || (isMaximizedActiveOnTargetScreen && preferences.maximizedWindowBehavior == .hideDocky)
+    }
+
+    private var isContentOverlapActive: Bool {
+        isFullscreenActiveOnTargetScreen
+            || (isMaximizedActiveOnTargetScreen && preferences.maximizedWindowBehavior == .hideDocky)
+    }
+
+    /// The frame Docky claims for content reservation, or nil when Docky is
+    /// hidden / off-screen / not currently rendering. Used by services that
+    /// keep other apps' windows out of Docky's way.
+    var currentReservationFrame: CGRect? {
+        visibilityState == .visible ? frame : nil
     }
 
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
@@ -132,8 +147,10 @@ final class MainWindow: NSWindow {
         observeVisibilityInputs()
         updatePointerScreenMonitoring()
         updateDragRevealMonitoring()
-        isFullscreenActiveOnTargetScreen = computeFullscreenStateOnTargetScreen()
-        if isFullscreenActiveOnTargetScreen {
+        let initialOverlap = computeContentOverlapStateOnTargetScreen()
+        isFullscreenActiveOnTargetScreen = initialOverlap.isFullscreen
+        isMaximizedActiveOnTargetScreen = initialOverlap.isMaximized
+        if isContentOverlapActive {
             visibilityState = shouldRemainVisible ? .visible : .hidden
         }
     }
@@ -280,6 +297,13 @@ final class MainWindow: NSWindow {
                 self?.applyEffectiveVisibility(animated: true)
             }
             .store(in: &cancellables)
+
+        preferences.$maximizedWindowBehavior
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateFullscreenStateAndApply(animated: true)
+            }
+            .store(in: &cancellables)
     }
 
     private func applyCollectionBehavior() {
@@ -363,7 +387,7 @@ final class MainWindow: NSWindow {
     }
 
     private var shouldDwellBeforeReveal: Bool {
-        isFullscreenActiveOnTargetScreen
+        isContentOverlapActive
             && visibilityState == .hidden
             && preferences.fullscreenRevealDelay > 0
     }
@@ -727,9 +751,12 @@ final class MainWindow: NSWindow {
     }
 
     private func updateFullscreenStateAndApply(animated: Bool) {
-        let newValue = computeFullscreenStateOnTargetScreen()
-        guard newValue != isFullscreenActiveOnTargetScreen else { return }
-        isFullscreenActiveOnTargetScreen = newValue
+        let observation = computeContentOverlapStateOnTargetScreen()
+        let fullscreenChanged = observation.isFullscreen != isFullscreenActiveOnTargetScreen
+        let maximizedChanged = observation.isMaximized != isMaximizedActiveOnTargetScreen
+        guard fullscreenChanged || maximizedChanged else { return }
+        isFullscreenActiveOnTargetScreen = observation.isFullscreen
+        isMaximizedActiveOnTargetScreen = observation.isMaximized
         applyEffectiveVisibility(animated: animated)
     }
 
@@ -744,19 +771,28 @@ final class MainWindow: NSWindow {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.85, execute: workItem)
     }
 
-    private func computeFullscreenStateOnTargetScreen() -> Bool {
-        guard let targetFrame = targetScreen()?.frame,
+    private struct ContentOverlapObservation {
+        let isFullscreen: Bool
+        let isMaximized: Bool
+    }
+
+    private func computeContentOverlapStateOnTargetScreen() -> ContentOverlapObservation {
+        guard let screen = targetScreen(),
               let primaryScreenHeight = NSScreen.screens.first?.frame.height
         else {
-            return false
+            return ContentOverlapObservation(isFullscreen: false, isMaximized: false)
         }
 
         let listOptions: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         guard let windows = CGWindowListCopyWindowInfo(listOptions, kCGNullWindowID) as? [[String: Any]] else {
-            return false
+            return ContentOverlapObservation(isFullscreen: false, isMaximized: false)
         }
 
         let ownPID = ProcessInfo.processInfo.processIdentifier
+        let frame = screen.frame
+        let visibleFrame = screen.visibleFrame
+        var foundFullscreen = false
+        var foundMaximized = false
 
         for info in windows {
             guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0 else { continue }
@@ -779,17 +815,25 @@ final class MainWindow: NSWindow {
                 height: cgBounds.height
             )
 
-            // A genuine fullscreen window covers the entire NSScreen.frame
-            // (including the menubar area). Maximized windows only cover
-            // visibleFrame, so this distinguishes the two.
-            if abs(nsBounds.minX - targetFrame.minX) < 1,
-               abs(nsBounds.minY - targetFrame.minY) < 1,
-               abs(nsBounds.width - targetFrame.width) < 1,
-               abs(nsBounds.height - targetFrame.height) < 1 {
-                return true
+            // Fullscreen: window covers the entire NSScreen.frame (including
+            // the menubar area). Maximized: window matches visibleFrame
+            // exactly, which is smaller than frame by the menubar.
+            if Self.rect(nsBounds, matches: frame) {
+                foundFullscreen = true
+            } else if Self.rect(nsBounds, matches: visibleFrame) {
+                foundMaximized = true
             }
+
+            if foundFullscreen && foundMaximized { break }
         }
 
-        return false
+        return ContentOverlapObservation(isFullscreen: foundFullscreen, isMaximized: foundMaximized)
+    }
+
+    private static func rect(_ a: CGRect, matches b: CGRect, tolerance: CGFloat = 1) -> Bool {
+        abs(a.minX - b.minX) < tolerance
+            && abs(a.minY - b.minY) < tolerance
+            && abs(a.width - b.width) < tolerance
+            && abs(a.height - b.height) < tolerance
     }
 }

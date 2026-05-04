@@ -450,6 +450,30 @@ enum DockWindowAxisSizing: String, CaseIterable, Identifiable {
     }
 }
 
+enum MaximizedWindowBehavior: String, CaseIterable, Identifiable {
+    case ignore
+    case hideDocky
+    case resizeWindow
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .ignore: "Ignore"
+        case .hideDocky: "Hide Docky"
+        case .resizeWindow: "Resize Windows"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .ignore: "Maximized windows render under Docky."
+        case .hideDocky: "Slide Docky off-screen while a maximized window is on its display, with edge-dwell to reveal."
+        case .resizeWindow: "When an app maximizes, shrink its window to leave room for Docky. Requires Accessibility permission and may not work for every app."
+        }
+    }
+}
+
 enum DockClipShape: String, CaseIterable, Identifiable {
     case rounded
     case circle
@@ -836,6 +860,15 @@ final class DockyPreferences: ObservableObject {
             }
 
             defaults.set(clampedValue, forKey: Keys.autohideWindowDelay)
+        }
+    }
+
+    /// How Docky reacts to a maximized (visibleFrame-sized, non-fullscreen)
+    /// window on its target screen.
+    @Published var maximizedWindowBehavior: MaximizedWindowBehavior {
+        didSet {
+            guard maximizedWindowBehavior != oldValue else { return }
+            defaults.set(maximizedWindowBehavior.rawValue, forKey: Keys.maximizedWindowBehavior)
         }
     }
 
@@ -1266,6 +1299,7 @@ final class DockyPreferences: ObservableObject {
         static let opensAtLogin = "docky.opensAtLogin"
         static let autohideWindowDelay = "docky.autohideWindowDelay"
         static let fullscreenRevealDelay = "docky.fullscreenRevealDelay"
+        static let maximizedWindowBehavior = "docky.maximizedWindowBehavior"
         static let hidesSystemDock = "docky.hidesSystemDock"
         static let overflowBehavior = "docky.overflowBehavior"
         static let windowAxisSizing = "docky.windowAxisSizing"
@@ -1314,6 +1348,7 @@ final class DockyPreferences: ObservableObject {
         static let opensAtLogin = true
         static let autohideWindowDelay: TimeInterval = 0.5
         static let fullscreenRevealDelay: TimeInterval = 0.5
+        static let maximizedWindowBehavior: MaximizedWindowBehavior = .ignore
         static let hidesSystemDock = true
         static let overflowBehavior: DockOverflowBehavior = .rescale
         static let windowAxisSizing: DockWindowAxisSizing = .fitContent
@@ -1363,6 +1398,7 @@ final class DockyPreferences: ObservableObject {
         let storedOpensAtLogin = defaults.object(forKey: Keys.opensAtLogin) as? Bool
         let storedAutohideWindowDelay = defaults.object(forKey: Keys.autohideWindowDelay) as? Double
         let storedFullscreenRevealDelay = defaults.object(forKey: Keys.fullscreenRevealDelay) as? Double
+        let storedMaximizedWindowBehavior = defaults.string(forKey: Keys.maximizedWindowBehavior)
         let storedHidesSystemDock = defaults.object(forKey: Keys.hidesSystemDock) as? Bool
         let storedOverflowBehavior = defaults.string(forKey: Keys.overflowBehavior)
         let storedWindowAxisSizing = defaults.string(forKey: Keys.windowAxisSizing)
@@ -1411,6 +1447,7 @@ final class DockyPreferences: ObservableObject {
         self.opensAtLogin = storedOpensAtLogin ?? LaunchAtLoginService.shared.isEnabled
         self.autohideWindowDelay = max(storedAutohideWindowDelay ?? DefaultValues.autohideWindowDelay, 0)
         self.fullscreenRevealDelay = max(storedFullscreenRevealDelay ?? DefaultValues.fullscreenRevealDelay, 0)
+        self.maximizedWindowBehavior = (storedMaximizedWindowBehavior.flatMap(MaximizedWindowBehavior.init(rawValue:)) ?? DefaultValues.maximizedWindowBehavior)
         self.hidesSystemDock = storedHidesSystemDock ?? DefaultValues.hidesSystemDock
         self.overflowBehavior = (storedOverflowBehavior.flatMap(DockOverflowBehavior.init(rawValue:)) ?? DefaultValues.overflowBehavior)
         self.windowAxisSizing = (storedWindowAxisSizing.flatMap(DockWindowAxisSizing.init(rawValue:)) ?? DefaultValues.windowAxisSizing)
@@ -1488,6 +1525,7 @@ final class DockyPreferences: ObservableObject {
         opensAtLogin = DefaultValues.opensAtLogin
         autohideWindowDelay = DefaultValues.autohideWindowDelay
         fullscreenRevealDelay = DefaultValues.fullscreenRevealDelay
+        maximizedWindowBehavior = DefaultValues.maximizedWindowBehavior
         hidesSystemDock = DefaultValues.hidesSystemDock
         overflowBehavior = DefaultValues.overflowBehavior
         windowAxisSizing = DefaultValues.windowAxisSizing
