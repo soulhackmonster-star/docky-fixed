@@ -292,14 +292,22 @@ struct AppFolderPopoverView: View {
     @Binding var isPresented: Bool
     let onPopoverSizeChange: (CGSize) -> Void
     @ObservedObject private var preferences = DockyPreferences.shared
+    @State private var hoveredBundleIdentifier: String?
 
     private let columns = 3
-    private let itemWidth: CGFloat = 112
-    private let itemHeight: CGFloat = 132
+    private let itemWidth: CGFloat = 96
+    private let itemHeight: CGFloat = 96
     private let itemSpacing: CGFloat = 12
     private let contentPadding: CGFloat = 20
     private let headerHeight: CGFloat = 42
     private let maxHeight: CGFloat = 620
+    // At rest the ring is inset 8pt from the cell edge so it sits inside
+    // the visible icon squircle. On hover the inset goes negative, pushing
+    // the ring `hoverOverflow` past the cell on each side for a clear pop.
+    // The radius matches Docky's widget tile shape (`tileSize * 0.225`).
+    private let iconChromeInset: CGFloat = 8
+    private let hoverOverflow: CGFloat = 4
+    private var iconBorderRadius: CGFloat { itemWidth * 0.225 }
 
     init(
         tile: AppFolderTile,
@@ -331,31 +339,41 @@ struct AppFolderPopoverView: View {
             ScrollView(showsIndicators: false) {
                 LazyVGrid(columns: gridColumns, spacing: itemSpacing) {
                     ForEach(tile.apps, id: \.bundleIdentifier) { app in
+                        let isHovered = hoveredBundleIdentifier == app.bundleIdentifier
                         Button {
                             WorkspaceService.shared.activateOrOpen(bundleIdentifier: app.bundleIdentifier)
                             isPresented = false
                         } label: {
-                            VStack(spacing: 8) {
-                                Image(nsImage: icon(forBundleIdentifier: app.bundleIdentifier))
-                                    .resizable()
-                                    .interpolation(.high)
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(width: 72, height: 72)
-
-                                Text(app.displayName)
-                                    .font(.callout)
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.center)
-                                    .foregroundStyle(.primary)
-                            }
-                            .frame(width: itemWidth, height: itemHeight)
-                            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .strokeBorder(.white.opacity(0.08), lineWidth: 1)
-                            }
+                            Image(nsImage: icon(forBundleIdentifier: app.bundleIdentifier))
+                                .resizable()
+                                .interpolation(.high)
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: itemWidth, height: itemHeight)
+                                .overlay {
+                                    // Border lives in an overlay whose inset
+                                    // tracks hover state — at rest the ring
+                                    // hugs the visible icon squircle, on hover
+                                    // it pushes `hoverOverflow` past the cell
+                                    // edge for a clear pop.
+                                    RoundedRectangle(cornerRadius: iconBorderRadius, style: .continuous)
+                                        .strokeBorder(Color.primary.opacity(0.35), lineWidth: 1)
+                                        .padding(isHovered ? -hoverOverflow : iconChromeInset)
+                                }
+                                .animation(.easeInOut(duration: 0.15), value: isHovered)
                         }
                         .buttonStyle(.plain)
+                        .onHover { hovering in
+                            if hovering {
+                                hoveredBundleIdentifier = app.bundleIdentifier
+                            } else if hoveredBundleIdentifier == app.bundleIdentifier {
+                                hoveredBundleIdentifier = nil
+                            }
+                        }
+                        .background {
+                            ContextActionMenuPresenter { modifierFlags in
+                                appContextActions(for: app, modifierFlags: modifierFlags)
+                            }
+                        }
                     }
                 }
                 .padding(contentPadding)
@@ -393,6 +411,21 @@ struct AppFolderPopoverView: View {
         }
 
         return IconCacheService.shared.icon(forBundleIdentifier: bundleIdentifier)
+    }
+
+    /// Builds the same context menu a dock AppTile would show, scoped to the
+    /// catalog-defined actions plus the running-windows section. Docky-only
+    /// options ("Show as Widget", "Hide in Docky") are intentionally omitted —
+    /// they don't apply to apps surfaced from inside an app folder.
+    private func appContextActions(
+        for app: AppTile,
+        modifierFlags: NSEvent.ModifierFlags
+    ) -> [ContextAction] {
+        let syntheticTile = Tile(content: .app(app))
+        let baseActions = MenuCatalogService.shared
+            .contextActions(for: syntheticTile, modifierFlags: modifierFlags) ?? []
+        let windows = WorkspaceService.shared.appWindows(bundleIdentifier: app.bundleIdentifier)
+        return injectingAppWindowActions(windows, into: baseActions)
     }
 }
 

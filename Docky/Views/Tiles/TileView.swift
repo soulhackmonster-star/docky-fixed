@@ -1203,60 +1203,6 @@ struct TileView: View {
         return actions
     }
 
-    private func injectingAppWindowActions(_ windows: [AppWindow], into actions: [ContextAction]) -> [ContextAction] {
-        guard !windows.isEmpty else {
-            return actions
-        }
-
-        let windowActions = windows.map { window in
-            ContextAction.action(appWindowMenuTitle(for: window)) {
-                _ = WorkspaceService.shared.focus(window: window)
-            }
-        }
-
-        var result = actions
-        var insertionIndex = result.firstIndex { action in
-            action.kind == .submenu && action.title == "Options"
-        } ?? result.endIndex
-
-        if insertionIndex > result.startIndex, result[insertionIndex - 1].kind != .divider {
-            result.insert(.divider, at: insertionIndex)
-            insertionIndex += 1
-        }
-
-        result.insert(contentsOf: windowActions, at: insertionIndex)
-
-        let trailingDividerIndex = min(insertionIndex + windowActions.count, result.endIndex)
-        if trailingDividerIndex < result.endIndex, result[trailingDividerIndex].kind != .divider {
-            result.insert(.divider, at: trailingDividerIndex)
-        }
-
-        while result.first?.kind == .divider {
-            result.removeFirst()
-        }
-
-        while result.last?.kind == .divider {
-            result.removeLast()
-        }
-
-        return result.enumerated().compactMap { index, action in
-            if action.kind == .divider,
-               index > 0,
-               result[index - 1].kind == .divider {
-                return nil
-            }
-
-            return action
-        }
-    }
-
-    private func appWindowMenuTitle(for window: AppWindow) -> String {
-        guard window.isMinimized else {
-            return window.windowTitle
-        }
-
-        return "\(window.windowTitle) (Minimized)"
-    }
 
     private func minimizedWindowContextActions(
         for window: AppWindow,
@@ -2258,6 +2204,67 @@ func fileContextActions(for url: URL) -> [ContextAction] {
 
 func contextMenuSymbol(_ name: String) -> NSImage? {
     NSImage(systemSymbolName: name, accessibilityDescription: nil)
+}
+
+/// Inserts a "running windows" section into a catalog-driven app menu.
+/// Each window becomes a top-level action that focuses the window when
+/// chosen. Inserted before any "Options" submenu, falling back to the end
+/// when none is present. Called from both the dock tile path and the app
+/// folder grid path so menus stay in sync.
+func injectingAppWindowActions(
+    _ windows: [AppWindow],
+    into actions: [ContextAction]
+) -> [ContextAction] {
+    guard !windows.isEmpty else { return actions }
+
+    let windowActions = windows.map { window in
+        ContextAction.action(appWindowMenuTitle(for: window)) {
+            _ = WorkspaceService.shared.focus(window: window)
+        }
+    }
+
+    var result = actions
+    var insertionIndex = result.firstIndex { action in
+        action.kind == .submenu && action.title == "Options"
+    } ?? result.endIndex
+
+    if insertionIndex > result.startIndex, result[insertionIndex - 1].kind != .divider {
+        result.insert(.divider, at: insertionIndex)
+        insertionIndex += 1
+    }
+
+    result.insert(contentsOf: windowActions, at: insertionIndex)
+
+    let trailingDividerIndex = min(insertionIndex + windowActions.count, result.endIndex)
+    if trailingDividerIndex < result.endIndex, result[trailingDividerIndex].kind != .divider {
+        result.insert(.divider, at: trailingDividerIndex)
+    }
+
+    while result.first?.kind == .divider {
+        result.removeFirst()
+    }
+
+    while result.last?.kind == .divider {
+        result.removeLast()
+    }
+
+    return result.enumerated().compactMap { index, action in
+        if action.kind == .divider,
+           index > 0,
+           result[index - 1].kind == .divider {
+            return nil
+        }
+
+        return action
+    }
+}
+
+func appWindowMenuTitle(for window: AppWindow) -> String {
+    guard window.isMinimized else {
+        return window.windowTitle
+    }
+
+    return "\(window.windowTitle) (Minimized)"
 }
 
 private func openWithApplicationActions(for url: URL) -> [ContextAction] {
