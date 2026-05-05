@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import Combine
 import QuickLookThumbnailing
 import SwiftUI
 
@@ -22,6 +23,7 @@ struct TileView: View {
     @ObservedObject private var mediaPlayback = MediaPlaybackService.shared
     @ObservedObject private var editMode = DockEditModeService.shared
     @ObservedObject private var widgetExpansion = WidgetExpansionWindowController.shared
+    @ObservedObject private var dockDrag = DockDragService.shared
     @State private var isHovering = false
     @State private var isTooltipPresented = false
     @State private var tooltipDelayTask: Task<Void, Never>?
@@ -34,6 +36,7 @@ struct TileView: View {
     @State private var widgetExpansionTask: Task<Void, Never>?
     @State private var folderSnapshot: FolderContentsSnapshot = .loaded([])
     @State private var lastFolderPopoverDismissedAt: TimeInterval = 0
+    @State private var isPressed = false
 
     private static let finderBundleIdentifier = "com.apple.finder"
     private static let folderPopoverRetapGuardInterval: TimeInterval = 0.25
@@ -50,6 +53,7 @@ struct TileView: View {
         self._mediaPlayback = ObservedObject(wrappedValue: MediaPlaybackService.shared)
         self._editMode = ObservedObject(wrappedValue: DockEditModeService.shared)
         self._widgetExpansion = ObservedObject(wrappedValue: WidgetExpansionWindowController.shared)
+        self._dockDrag = ObservedObject(wrappedValue: DockDragService.shared)
     }
 
     private func contextActions(modifierFlags: NSEvent.ModifierFlags) -> [ContextAction] {
@@ -343,6 +347,24 @@ struct TileView: View {
         lockedProductFeature != nil
     }
 
+    private var isAppContent: Bool {
+        if case .app = tile.content { return true }
+        return false
+    }
+
+    /// Combined dim trigger for app icons: pressed (mouse-down before
+    /// release) or active drag-over target. Folders/widgets/etc. don't dim
+    /// — only `.app` tile content participates.
+    private var appTileDimSignal: Bool {
+        isAppContent && (isPressed || isDocumentDropTarget)
+    }
+
+    private var tileBodyOpacity: Double {
+        if isLockedProductPlacement { return 0.38 }
+        if appTileDimSignal { return 0.5 }
+        return 1
+    }
+
     private func lockedContextActions() -> [ContextAction] {
         var actions: [ContextAction] = [
             .action("Unlock Docky Pro") {
@@ -384,7 +406,8 @@ struct TileView: View {
 
     private var tileBody: some View {
         laidOutContent
-            .opacity(isLockedProductPlacement ? 0.38 : 1)
+            .opacity(tileBodyOpacity)
+            .animation(.easeInOut(duration: 0.12), value: appTileDimSignal)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .overlay(alignment: runningIndicatorAlignment) {
                 runningIndicator
@@ -397,17 +420,20 @@ struct TileView: View {
                         .allowsHitTesting(false)
                 }
             }
-            .overlay {
-                if isDocumentDropTarget {
-                    laidOutContent
-                        .disabled(true)
-                        .colorMultiply(.black.opacity(0.25))
-                        .allowsHitTesting(false)
-                }
-            }
             .contentShape(Rectangle())
             .onHover(perform: updateHoverState)
             .onTapGesture(perform: handleTap)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        guard isAppContent, !isPressed else { return }
+                        isPressed = true
+                    }
+                    .onEnded { _ in
+                        guard isPressed else { return }
+                        isPressed = false
+                    }
+            )
             .onGeometryChange(for: CGRect.self) { proxy in
                 proxy.frame(in: .global)
             } action: { newFrame in
@@ -444,6 +470,21 @@ struct TileView: View {
                 widgetExpansionTask?.cancel()
                 widgetExpansionTask = nil
                 WidgetExpansionWindowController.shared.dismiss(sourceTileID: tile.id)
+            }
+            .onChange(of: dockDrag.springLoadedTileID) { _, springLoaded in
+                guard springLoaded == tile.id else { return }
+                switch tile.content {
+                case .appFolder:
+                    if !isAppFolderPopoverPresented {
+                        isAppFolderPopoverPresented = true
+                    }
+                case .folder:
+                    if !isFolderPopoverPresented {
+                        isFolderPopoverPresented = true
+                    }
+                default:
+                    return
+                }
             }
             .background {
                 ContextActionMenuPresenter(
@@ -2027,6 +2068,9 @@ private struct FolderPopoverPresenter: NSViewRepresentable {
         private var lastContentSize = NSSize(width: 320, height: 240)
         private weak var anchorView: NSView?
         private var isInterruptingAutohide = false
+        private var globalClickMonitor: Any?
+        private var localClickMonitor: Any?
+        private var dragEndSubscription: AnyCancellable?
 
         init(
             tile: FolderTile,
@@ -2073,18 +2117,92 @@ private struct FolderPopoverPresenter: NSViewRepresentable {
             beginAutohideInterruption(for: view)
             updateContentSize(lastContentSize)
             popover.show(relativeTo: anchorRect(in: view.bounds), of: view, preferredEdge: preferredEdge)
+            installClickAwayMonitors()
+            installDragEndSubscriptionIfNeeded()
         }
 
         func close() {
+            removeClickAwayMonitors()
+            cancelDragEndSubscription()
             endAutohideInterruption()
             popover.performClose(nil)
         }
 
         func popoverDidClose(_ notification: Notification) {
+            removeClickAwayMonitors()
+            cancelDragEndSubscription()
             endAutohideInterruption()
             guard isPresented.wrappedValue else { return }
             DispatchQueue.main.async { [isPresented] in
                 isPresented.wrappedValue = false
+            }
+        }
+
+        /// Mirrors AppFolderPopoverPresenter: when the popover opens during
+        /// an active drag, watch DockDragService so the popover closes when
+        /// the drag ends — drop on us, drop elsewhere, or cancel.
+        private func installDragEndSubscriptionIfNeeded() {
+            cancelDragEndSubscription()
+            guard DockDragService.shared.kind != nil else { return }
+            dragEndSubscription = DockDragService.shared.$kind
+                .dropFirst()
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] kind in
+                    guard kind == nil else { return }
+                    self?.dismissAfterDragEnd()
+                }
+        }
+
+        private func cancelDragEndSubscription() {
+            dragEndSubscription?.cancel()
+            dragEndSubscription = nil
+        }
+
+        private func dismissAfterDragEnd() {
+            cancelDragEndSubscription()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self, isPresented] in
+                guard let self else { return }
+                if isPresented.wrappedValue {
+                    self.popover.performClose(nil)
+                    isPresented.wrappedValue = false
+                }
+            }
+        }
+
+        private func installClickAwayMonitors() {
+            removeClickAwayMonitors()
+            let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+            globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
+                self?.dismissForClickAway()
+            }
+            localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+                guard let self else { return event }
+                let popoverWindow = self.popover.contentViewController?.view.window
+                if event.window !== popoverWindow {
+                    self.dismissForClickAway()
+                }
+                return event
+            }
+        }
+
+        private func removeClickAwayMonitors() {
+            if let monitor = globalClickMonitor {
+                NSEvent.removeMonitor(monitor)
+                globalClickMonitor = nil
+            }
+            if let monitor = localClickMonitor {
+                NSEvent.removeMonitor(monitor)
+                localClickMonitor = nil
+            }
+        }
+
+        private func dismissForClickAway() {
+            removeClickAwayMonitors()
+            DispatchQueue.main.async { [weak self, isPresented] in
+                self?.popover.performClose(nil)
+                if isPresented.wrappedValue {
+                    isPresented.wrappedValue = false
+                }
             }
         }
 

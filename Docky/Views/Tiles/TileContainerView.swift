@@ -1255,6 +1255,7 @@ struct TileContainerView: View {
             if dockDrag.documentTargetTileID != targetID { dockDrag.documentTargetTileID = targetID }
             if dockDrag.destinationIndex != nil { dockDrag.destinationIndex = nil }
             if dockDrag.destinationSection != nil { dockDrag.destinationSection = nil }
+            dockDrag.updateSpringLoadCandidate(springLoadCandidateTileID(at: location))
             return
         case .app:
             guard isPointInPinnedDropRegion(positionValue) else {
@@ -1275,9 +1276,11 @@ struct TileContainerView: View {
                 if dockDrag.documentTargetTileID != targetID { dockDrag.documentTargetTileID = targetID }
                 if dockDrag.destinationIndex != nil { dockDrag.destinationIndex = nil }
                 if dockDrag.destinationSection != nil { dockDrag.destinationSection = nil }
+                dockDrag.updateSpringLoadCandidate(springLoadCandidateTileID(at: location))
                 return
             }
             if dockDrag.documentTargetTileID != nil { dockDrag.documentTargetTileID = nil }
+            dockDrag.updateSpringLoadCandidate(springLoadCandidateTileID(at: location))
             guard isPointInTrailingDropRegion(positionValue) else {
                 dockDrag.destinationIndex = nil
                 dockDrag.destinationSection = nil
@@ -1327,6 +1330,27 @@ struct TileContainerView: View {
                 return nil
             }
             return tile.id
+        }
+        return nil
+    }
+
+    /// Tile id under the cursor that should spring-open during a drag.
+    /// Grid-mode app folders and grid-mode regular folders qualify; list/
+    /// inline presentations can't host drop targets per item.
+    private func springLoadCandidateTileID(at location: CGPoint) -> String? {
+        guard !editMode.isActive else { return nil }
+        for tile in displayTiles.reversed() {
+            guard let frame = tileFrames[tile.id], frame.contains(location) else { continue }
+            switch tile.content {
+            case .appFolder(let folder)
+                where folder.contentViewMode == .grid && !folder.apps.isEmpty:
+                return tile.id
+            case .folder(let folder)
+                where folder.displayMode == .folder && folder.contentViewMode == .grid:
+                return tile.id
+            default:
+                return nil
+            }
         }
         return nil
     }

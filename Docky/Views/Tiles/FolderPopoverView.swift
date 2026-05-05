@@ -20,6 +20,9 @@ struct FolderPopoverView: View {
     @State private var backHistory: [FolderPopoverEntry]
     @State private var selectedItemID: String?
     @State private var watchedEntryURL: URL?
+    @State private var springLoadingItemID: String?
+    @State private var springLoadTask: Task<Void, Never>?
+    private let subfolderSpringLoadDwell: TimeInterval = 0.7
 
     private let maxGridColumnCount = 6
     private let gridItemWidth: CGFloat = 144
@@ -64,7 +67,6 @@ struct FolderPopoverView: View {
                 selectDefaultItemIfNeeded()
                 reportPopoverSize()
             }
-            .background(.ultraThinMaterial)
             .background {
                 FolderPopoverKeyMonitor { event in
                     handleKeyDown(event)
@@ -97,6 +99,10 @@ struct FolderPopoverView: View {
             }
         }
         .frame(width: popoverWidth, height: popoverHeight)
+        .onDrop(of: [UTType.fileURL.identifier], isTargeted: nil) { providers in
+            moveDroppedFiles(providers: providers, into: currentEntry.url)
+            return true
+        }
     }
 
     private var items: [URL] {
@@ -139,6 +145,7 @@ struct FolderPopoverView: View {
     private func cardButton<Label: View>(for item: FolderPopoverItem, @ViewBuilder label: () -> Label) -> some View {
         switch item {
         case .url(let itemURL):
+            let isFolder = isNavigableFolder(itemURL)
             Button {
                 selectedItemID = item.id
                 handleSelection(of: itemURL)
@@ -158,6 +165,20 @@ struct FolderPopoverView: View {
                     contextActions(for: itemURL)
                 }
             }
+            // Folder-only drop target: hover-dwell navigates into the folder
+            // (classic spring-loaded folders), and releasing files there moves
+            // them into that folder rather than the popover's current folder.
+            // Non-folder items pass through to the body-level drop.
+            .onDrop(
+                of: isFolder ? [UTType.fileURL.identifier] : [],
+                isTargeted: isFolder ? subfolderSpringLoadBinding(for: itemURL) : nil,
+                perform: { providers in
+                    guard isFolder else { return false }
+                    cancelSubfolderSpringLoad()
+                    moveDroppedFiles(providers: providers, into: itemURL)
+                    return true
+                }
+            )
         case .action(let action):
             Button(action: action.handler) {
                 label()
@@ -377,6 +398,80 @@ struct FolderPopoverView: View {
         let provider = NSItemProvider(object: itemURL as NSURL)
         provider.suggestedName = displayName(for: itemURL)
         return provider
+    }
+
+    /// Spring-loaded drop landing: moves the dragged URLs into `destination`.
+    /// Cross-volume drops fall back to a copy. Skips items that already live
+    /// in the destination folder.
+    private func moveDroppedFiles(providers: [NSItemProvider], into destination: URL) {
+        let typeID = UTType.fileURL.identifier
+        let group = DispatchGroup()
+        var collected: [URL] = []
+        let queue = DispatchQueue(label: "docky.folder.drop")
+
+        for provider in providers {
+            guard provider.hasItemConformingToTypeIdentifier(typeID) else { continue }
+            group.enter()
+            provider.loadDataRepresentation(forTypeIdentifier: typeID) { data, _ in
+                defer { group.leave() }
+                guard let data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                queue.sync { collected.append(url) }
+            }
+        }
+
+        group.notify(queue: .main) {
+            for source in collected {
+                let target = destination.appendingPathComponent(source.lastPathComponent)
+                guard target.standardizedFileURL != source.standardizedFileURL else { continue }
+                do {
+                    try FileManager.default.moveItem(at: source, to: target)
+                } catch {
+                    // Cross-volume moves throw; copy as a fallback so the
+                    // user still gets something at the destination.
+                    try? FileManager.default.copyItem(at: source, to: target)
+                }
+            }
+            isPresented = false
+            DockDragService.shared.clear()
+        }
+    }
+
+    /// Drives subfolder spring-loading: when a drag enters a folder card,
+    /// schedule a navigation; when it leaves, cancel. The navigation pushes
+    /// the current entry onto backHistory and replaces it with the subfolder
+    /// — the same code path the user gets when they click into a folder.
+    private func subfolderSpringLoadBinding(for itemURL: URL) -> Binding<Bool> {
+        let itemID = itemURL.absoluteString
+        return Binding(
+            get: { springLoadingItemID == itemID },
+            set: { isTargeted in
+                if isTargeted {
+                    scheduleSubfolderSpringLoad(into: itemURL)
+                } else if springLoadingItemID == itemID {
+                    cancelSubfolderSpringLoad()
+                }
+            }
+        )
+    }
+
+    private func scheduleSubfolderSpringLoad(into itemURL: URL) {
+        let itemID = itemURL.absoluteString
+        guard springLoadingItemID != itemID else { return }
+        springLoadTask?.cancel()
+        springLoadingItemID = itemID
+        let dwell = subfolderSpringLoadDwell
+        springLoadTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(dwell * 1_000_000_000))
+            guard !Task.isCancelled, springLoadingItemID == itemID else { return }
+            springLoadingItemID = nil
+            handleSelection(of: itemURL)
+        }
+    }
+
+    private func cancelSubfolderSpringLoad() {
+        springLoadTask?.cancel()
+        springLoadTask = nil
+        springLoadingItemID = nil
     }
 
     private func selectDefaultItemIfNeeded() {

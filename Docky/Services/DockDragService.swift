@@ -32,6 +32,14 @@ final class DockDragService: ObservableObject {
     @Published var destinationIndex: Int?
     @Published var destinationSection: Section?
     @Published var documentTargetTileID: String?
+    /// App folder tile id that has spring-opened due to a sustained hover
+    /// during an external drag. Mirrors macOS Finder spring-loaded folders:
+    /// hover dwell triggers the popover so the user can drop on a sub-target.
+    @Published var springLoadedTileID: String?
+
+    private var springLoadCandidateTileID: String?
+    private var springLoadWorkItem: DispatchWorkItem?
+    private let springLoadDwell: TimeInterval = 0.7
 
     private init() {}
 
@@ -50,6 +58,34 @@ final class DockDragService: ObservableObject {
         self.destinationIndex = nil
         self.destinationSection = nil
         self.documentTargetTileID = nil
+        clearSpringLoad()
+    }
+
+    /// Schedules a spring-load for `tileID` after a brief dwell. Passing nil
+    /// (or repeatedly passing the same id) preserves the candidate; a different
+    /// non-nil id resets the timer for the new candidate. The opened popover
+    /// stays open until the drag operation ends — close happens via clear().
+    func updateSpringLoadCandidate(_ tileID: String?) {
+        guard tileID != springLoadCandidateTileID else { return }
+        springLoadCandidateTileID = tileID
+        springLoadWorkItem?.cancel()
+        springLoadWorkItem = nil
+
+        guard let tileID, springLoadedTileID != tileID else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            guard self.springLoadCandidateTileID == tileID else { return }
+            self.springLoadedTileID = tileID
+        }
+        springLoadWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + springLoadDwell, execute: work)
+    }
+
+    private func clearSpringLoad() {
+        springLoadWorkItem?.cancel()
+        springLoadWorkItem = nil
+        springLoadCandidateTileID = nil
+        springLoadedTileID = nil
     }
 
     static func resolvePreview(from urls: [URL]) -> Kind? {

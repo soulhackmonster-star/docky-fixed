@@ -4,7 +4,9 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct AppFolderTileView: View {
     let tile: AppFolderTile
@@ -72,7 +74,7 @@ struct AppFolderTileView: View {
     }
 
     private var groupedOpenedBackdropHorizontalXOffset: CGFloat {
-        groupedOpenedBackdropOffset + (position == .bottom ? 2 : 0)
+        groupedOpenedBackdropOffset + (position == .bottom ? 3 : 0)
     }
 
     private func groupedOpenedBackdropCrossAxisExtent(in size: CGSize) -> CGFloat? {
@@ -349,14 +351,14 @@ struct AppFolderPopoverView: View {
                                 .interpolation(.high)
                                 .aspectRatio(contentMode: .fit)
                                 .frame(width: itemWidth, height: itemHeight)
-                                .overlay {
+                                .background {
                                     // Border lives in an overlay whose inset
                                     // tracks hover state — at rest the ring
                                     // hugs the visible icon squircle, on hover
                                     // it pushes `hoverOverflow` past the cell
                                     // edge for a clear pop.
                                     RoundedRectangle(cornerRadius: iconBorderRadius, style: .continuous)
-                                        .strokeBorder(Color.primary.opacity(0.35), lineWidth: 1)
+                                        .fill(Color.primary.opacity(0.35))
                                         .padding(isHovered ? -hoverOverflow : iconChromeInset)
                                 }
                                 .animation(.easeInOut(duration: 0.15), value: isHovered)
@@ -369,6 +371,14 @@ struct AppFolderPopoverView: View {
                                 hoveredBundleIdentifier = nil
                             }
                         }
+                        .onDrop(
+                            of: [UTType.fileURL.identifier],
+                            isTargeted: dropTargetBinding(for: app),
+                            perform: { providers in
+                                openDroppedFiles(providers: providers, with: app)
+                                return true
+                            }
+                        )
                         .background {
                             ContextActionMenuPresenter { modifierFlags in
                                 appContextActions(for: app, modifierFlags: modifierFlags)
@@ -380,7 +390,6 @@ struct AppFolderPopoverView: View {
             }
         }
         .frame(width: popoverSize.width, height: popoverSize.height)
-        .background(.ultraThinMaterial)
         .onAppear {
             onPopoverSizeChange(popoverSize)
         }
@@ -426,6 +435,51 @@ struct AppFolderPopoverView: View {
             .contextActions(for: syntheticTile, modifierFlags: modifierFlags) ?? []
         let windows = WorkspaceService.shared.appWindows(bundleIdentifier: app.bundleIdentifier)
         return injectingAppWindowActions(windows, into: baseActions)
+    }
+
+    /// Reuses the hover state for drop-target highlighting so the ring pops
+    /// out the same way it does on mouse hover when a drag is over the icon.
+    private func dropTargetBinding(for app: AppTile) -> Binding<Bool> {
+        Binding(
+            get: { hoveredBundleIdentifier == app.bundleIdentifier },
+            set: { newValue in
+                if newValue {
+                    hoveredBundleIdentifier = app.bundleIdentifier
+                } else if hoveredBundleIdentifier == app.bundleIdentifier {
+                    hoveredBundleIdentifier = nil
+                }
+            }
+        )
+    }
+
+    private func openDroppedFiles(providers: [NSItemProvider], with app: AppTile) {
+        let typeID = UTType.fileURL.identifier
+        let group = DispatchGroup()
+        var collected: [URL] = []
+        let queue = DispatchQueue(label: "docky.appfolder.drop")
+
+        for provider in providers {
+            guard provider.hasItemConformingToTypeIdentifier(typeID) else { continue }
+            group.enter()
+            provider.loadDataRepresentation(forTypeIdentifier: typeID) { data, _ in
+                defer { group.leave() }
+                guard let data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                queue.sync { collected.append(url) }
+            }
+        }
+
+        group.notify(queue: .main) {
+            guard !collected.isEmpty else {
+                DockDragService.shared.clear()
+                return
+            }
+            WorkspaceService.shared.open(
+                fileURLs: collected,
+                withApplicationBundleIdentifier: app.bundleIdentifier
+            )
+            isPresented = false
+            DockDragService.shared.clear()
+        }
     }
 }
 
@@ -615,6 +669,9 @@ struct AppFolderPopoverPresenter: NSViewRepresentable {
         private var lastContentSize = NSSize(width: 384, height: 240)
         private weak var anchorView: NSView?
         private var isInterruptingAutohide = false
+        private var globalClickMonitor: Any?
+        private var localClickMonitor: Any?
+        private var dragEndSubscription: AnyCancellable?
 
         init(tile: AppFolderTile, isPresented: Binding<Bool>, preferredEdge: NSRectEdge) {
             self.isPresented = isPresented
@@ -645,18 +702,99 @@ struct AppFolderPopoverPresenter: NSViewRepresentable {
             beginAutohideInterruption(for: view)
             updateContentSize(lastContentSize)
             popover.show(relativeTo: anchorRect(in: view.bounds), of: view, preferredEdge: preferredEdge)
+            installClickAwayMonitors()
+            installDragEndSubscriptionIfNeeded()
         }
 
         func close() {
+            removeClickAwayMonitors()
+            cancelDragEndSubscription()
             endAutohideInterruption()
             popover.performClose(nil)
         }
 
         func popoverDidClose(_ notification: Notification) {
+            removeClickAwayMonitors()
+            cancelDragEndSubscription()
             endAutohideInterruption()
             guard isPresented.wrappedValue else { return }
             DispatchQueue.main.async { [isPresented] in
                 isPresented.wrappedValue = false
+            }
+        }
+
+        /// When the popover is presented during an active drag (spring-load),
+        /// observe the drag service so the popover closes the moment the drag
+        /// ends — drop on us, drop elsewhere, or Esc. The dropFirst() skips
+        /// the initial value so we only react to subsequent transitions.
+        private func installDragEndSubscriptionIfNeeded() {
+            cancelDragEndSubscription()
+            guard DockDragService.shared.kind != nil else { return }
+            dragEndSubscription = DockDragService.shared.$kind
+                .dropFirst()
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] kind in
+                    guard kind == nil else { return }
+                    self?.dismissAfterDragEnd()
+                }
+        }
+
+        private func cancelDragEndSubscription() {
+            dragEndSubscription?.cancel()
+            dragEndSubscription = nil
+        }
+
+        private func dismissAfterDragEnd() {
+            cancelDragEndSubscription()
+            // Tiny delay lets any in-flight drop handler (which may also be
+            // setting isPresented = false) finish cleanly before we close.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self, isPresented] in
+                guard let self else { return }
+                if isPresented.wrappedValue {
+                    self.popover.performClose(nil)
+                    isPresented.wrappedValue = false
+                }
+            }
+        }
+
+        /// NSPopover.behavior = .transient should auto-dismiss on outside
+        /// clicks, but it's unreliable when the host window is non-activating
+        /// (Docky's dock window). Belt-and-suspenders: explicit monitors
+        /// catch any mouse-down outside the popover and close it.
+        private func installClickAwayMonitors() {
+            removeClickAwayMonitors()
+            let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+            globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
+                self?.dismissForClickAway()
+            }
+            localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+                guard let self else { return event }
+                let popoverWindow = self.popover.contentViewController?.view.window
+                if event.window !== popoverWindow {
+                    self.dismissForClickAway()
+                }
+                return event
+            }
+        }
+
+        private func removeClickAwayMonitors() {
+            if let monitor = globalClickMonitor {
+                NSEvent.removeMonitor(monitor)
+                globalClickMonitor = nil
+            }
+            if let monitor = localClickMonitor {
+                NSEvent.removeMonitor(monitor)
+                localClickMonitor = nil
+            }
+        }
+
+        private func dismissForClickAway() {
+            removeClickAwayMonitors()
+            DispatchQueue.main.async { [weak self, isPresented] in
+                self?.popover.performClose(nil)
+                if isPresented.wrappedValue {
+                    isPresented.wrappedValue = false
+                }
             }
         }
 

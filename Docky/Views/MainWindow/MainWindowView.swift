@@ -199,12 +199,25 @@ final class ClickThroughHostingView<Content: View>: NSHostingView<Content> {
     }
 
     override func draggingExited(_ sender: (any NSDraggingInfo)?) {
-        DockDragService.shared.clear()
+        // Cursor left the dock window, but the drag may still be live — the
+        // user might be moving into a spring-loaded popover. Drop the
+        // location-derived state so previews disappear, but keep `kind`
+        // alive so popover-side drop handlers can resolve the source. The
+        // drag service is fully cleared in `draggingEnded(_:)` once AppKit
+        // tells us the drag is truly over.
+        DockDragService.shared.cursorLocation = nil
+        DockDragService.shared.destinationIndex = nil
+        DockDragService.shared.destinationSection = nil
+        DockDragService.shared.documentTargetTileID = nil
         // Keep paletteDrag alive so re-entry works — the SwiftUI .onDrag-initiated
         // drag is still in flight outside the window, and the palette item can't be
         // recovered from the pasteboard (which only carries the variant ID).
         DockEditModeService.shared.paletteDropDestination = nil
         restoreSystemDragImage()
+    }
+
+    override func draggingEnded(_ sender: any NSDraggingInfo) {
+        DockDragService.shared.clear()
     }
 
     /// Hide the system drag preview when our own insertion preview is active, so the
