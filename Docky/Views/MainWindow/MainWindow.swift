@@ -65,7 +65,11 @@ final class MainWindowContainerView: NSView {
     }
 }
 
-final class MainWindow: NSWindow {
+/// NSPanel (not NSWindow) so the `.nonactivatingPanel` style mask actually
+/// takes effect — that's the only way to keep clicks on the dock from
+/// activating Docky as a foreground app, which would otherwise break
+/// frontmost-tracked behaviors (cycle windows on tile click, hide-on-second-click).
+final class MainWindow: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
@@ -123,7 +127,15 @@ final class MainWindow: NSWindow {
 
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
         visibilityState = DockyPreferences.shared.autohidesWindow ? .hidden : .visible
-        super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
+        // Force `.nonactivatingPanel` regardless of what the XIB hands us so
+        // tile clicks never bring Docky to the foreground. Other bits stay
+        // intact (the XIB-supplied mask covers titled/resizable/etc.).
+        super.init(
+            contentRect: contentRect,
+            styleMask: style.union(.nonactivatingPanel),
+            backing: backingStoreType,
+            defer: flag
+        )
         performSetupIfNeeded()
     }
 
