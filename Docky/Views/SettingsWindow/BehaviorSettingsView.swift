@@ -150,6 +150,16 @@ struct BehaviorSettingsView: View {
             .disabled(!preferences.autohidesWindow)
 
             VStack(alignment: .leading, spacing: 8) {
+                Toggle("Hide in Fullscreen", isOn: $preferences.hidesDuringFullscreen)
+                    .font(.headline)
+
+                Text("When turned off, Docky stays pinned over fullscreen apps. When on, Docky autohides while a fullscreen app is on its display and reveals on edge dwell.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 4)
+
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Fullscreen Reveal Delay")
                     .font(.headline)
 
@@ -169,6 +179,7 @@ struct BehaviorSettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, 4)
+            .disabled(!preferences.hidesDuringFullscreen)
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {

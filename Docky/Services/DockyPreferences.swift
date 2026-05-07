@@ -1162,6 +1162,18 @@ final class DockyPreferences: ObservableObject {
         }
     }
 
+    /// When true, Docky hides while a fullscreen app is on its target
+    /// screen and reveals on edge dwell (gated by `fullscreenRevealDelay`).
+    /// Default true — matches the system Dock and what existed before this
+    /// preference was added. Turning it off keeps Docky pinned over
+    /// fullscreen apps.
+    @Published var hidesDuringFullscreen: Bool {
+        didSet {
+            guard hidesDuringFullscreen != oldValue else { return }
+            defaults.set(hidesDuringFullscreen, forKey: Keys.hidesDuringFullscreen)
+        }
+    }
+
     /// Shelve mode: hides Finder and Trash tiles so the dock reads as a
     /// pure shelf of pinned apps + widgets. Independent of recent-app
     /// suppression (`hidesRecentApps`).
@@ -1886,6 +1898,7 @@ final class DockyPreferences: ObservableObject {
         static let showsActivePinnedSeparator = "docky.showsActivePinnedSeparator"
         static let showsRunningApps = "docky.showsRunningApps"
         static let showsMinimizedWindows = "docky.showsMinimizedWindows"
+        static let hidesDuringFullscreen = "docky.hidesDuringFullscreen"
         static let enablesShelveMode = "docky.enablesShelveMode"
         static let hidesRecentApps = "docky.hidesRecentApps"
         static let appTileFrontmostClickBehavior = "docky.appTileFrontmostClickBehavior"
@@ -1957,6 +1970,7 @@ final class DockyPreferences: ObservableObject {
         static let showsActivePinnedSeparator = true
         static let showsRunningApps = true
         static let showsMinimizedWindows = true
+        static let hidesDuringFullscreen = true
         static let enablesShelveMode = false
         static let hidesRecentApps = false
         static let appTileFrontmostClickBehavior: AppTileFrontmostClickBehavior = .none
@@ -2102,6 +2116,7 @@ final class DockyPreferences: ObservableObject {
         self.showsActivePinnedSeparator = storedShowsActivePinnedSeparator ?? DefaultValues.showsActivePinnedSeparator
         self.showsRunningApps = storedShowsRunningApps ?? DefaultValues.showsRunningApps
         self.showsMinimizedWindows = storedShowsMinimizedWindows ?? DefaultValues.showsMinimizedWindows
+        self.hidesDuringFullscreen = (defaults.object(forKey: Keys.hidesDuringFullscreen) as? Bool) ?? DefaultValues.hidesDuringFullscreen
         self.enablesShelveMode = storedEnablesShelveMode ?? DefaultValues.enablesShelveMode
         self.hidesRecentApps = storedHidesRecentApps ?? DefaultValues.hidesRecentApps
         self.appTileFrontmostClickBehavior = storedAppTileFrontmostClickBehavior
@@ -2204,6 +2219,7 @@ final class DockyPreferences: ObservableObject {
         showsActivePinnedSeparator = DefaultValues.showsActivePinnedSeparator
         showsRunningApps = DefaultValues.showsRunningApps
         showsMinimizedWindows = DefaultValues.showsMinimizedWindows
+        hidesDuringFullscreen = DefaultValues.hidesDuringFullscreen
         enablesShelveMode = DefaultValues.enablesShelveMode
         hidesRecentApps = DefaultValues.hidesRecentApps
         appTileFrontmostClickBehavior = DefaultValues.appTileFrontmostClickBehavior

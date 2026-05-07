@@ -107,14 +107,18 @@ final class MainWindow: NSPanel {
     private var isFullscreenActiveOnTargetScreen = false
     private var isMaximizedActiveOnTargetScreen = false
 
+    private var fullscreenHidingActive: Bool {
+        isFullscreenActiveOnTargetScreen && preferences.hidesDuringFullscreen
+    }
+
     private var effectivelyAutohides: Bool {
         preferences.autohidesWindow
-            || isFullscreenActiveOnTargetScreen
+            || fullscreenHidingActive
             || (isMaximizedActiveOnTargetScreen && preferences.maximizedWindowBehavior == .hideDocky)
     }
 
     private var isContentOverlapActive: Bool {
-        isFullscreenActiveOnTargetScreen
+        fullscreenHidingActive
             || (isMaximizedActiveOnTargetScreen && preferences.maximizedWindowBehavior == .hideDocky)
     }
 
@@ -322,6 +326,13 @@ final class MainWindow: NSPanel {
             .store(in: &cancellables)
 
         preferences.$maximizedWindowBehavior
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateFullscreenStateAndApply(animated: true)
+            }
+            .store(in: &cancellables)
+
+        preferences.$hidesDuringFullscreen
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.updateFullscreenStateAndApply(animated: true)
