@@ -250,12 +250,10 @@ private struct LaunchpadOverlayView: View {
     @State private var renamingFolderDraft: String = ""
     @State private var dragState: LaunchpadDragState?
     @State private var cellFrames: [String: CGRect] = [:]
-    @State private var mergeDwellTask: Task<Void, Never>?
     @FocusState private var isSearchFocused: Bool
     @FocusState private var isRenameFocused: Bool
 
     private static let launchpadGridCoordinateSpace = "launchpadGrid"
-    private static let mergeDwellDuration: TimeInterval = 0.55
 
     private let searchBarWidth: CGFloat = 350
     private let searchBarTopInset: CGFloat = 56
@@ -308,8 +306,12 @@ private struct LaunchpadOverlayView: View {
             let scaledColumnSpacing = columnSpacing * scale
             let scaledMinRowSpacing = minRowSpacing * scale
             let scaledHorizontalInset = horizontalInset * scale
-            let cellWidth = iconSize
+            // Square cells: the cell side equals the natural card height
+            // (icon + label + inter-spacing) so the grid item is aspect 1:1.
+            // The icon stays at `iconSize`, centered horizontally inside
+            // the square — the extra width becomes padding around the icon.
             let cellHeight = iconSize + labelHeight + cellSpacing
+            let cellWidth = cellHeight
             let usableWidth = max(0, proxy.size.width - scaledHorizontalInset * 2)
             let usableHeight = max(0, proxy.size.height - topInset - bottomInset)
             // Columns from the user preference, but clamped so the row
@@ -351,6 +353,7 @@ private struct LaunchpadOverlayView: View {
                                     pageEntries: pages[pageIndex],
                                     cellWidth: cellWidth,
                                     cellHeight: cellHeight,
+                                    iconSide: iconSize,
                                     pageWidth: proxy.size.width,
                                     columns: pageColumns,
                                     columnSpacing: scaledColumnSpacing,
@@ -406,6 +409,7 @@ private struct LaunchpadOverlayView: View {
                         folder: folder,
                         folderLayoutID: folderLayoutID(for: folder),
                         sourceCellSize: CGSize(width: cellWidth, height: cellHeight),
+                        sourceIconSide: iconSize,
                         columnsPerPage: pageColumns,
                         rowsPerPage: pageRows,
                         onLaunch: { app in
@@ -428,7 +432,7 @@ private struct LaunchpadOverlayView: View {
                 // around it while this duplicate follows the pointer.
                 if let dragState,
                    let entry = filteredEntries.first(where: { layoutItemID(for: $0) == dragState.layoutItemID }) {
-                    floatingDragPreview(for: entry, cellSize: CGSize(width: cellWidth, height: cellHeight))
+                    floatingDragPreview(for: entry, cellSize: CGSize(width: cellWidth, height: cellHeight), iconSide: iconSize)
                         .position(dragState.location)
                         .scaleEffect(1.08)
                         .shadow(color: .black.opacity(0.35), radius: 22, y: 12)
@@ -493,6 +497,7 @@ private struct LaunchpadOverlayView: View {
         pageEntries: [LaunchpadEntry],
         cellWidth: CGFloat,
         cellHeight: CGFloat,
+        iconSide: CGFloat,
         pageWidth: CGFloat,
         columns: Int,
         columnSpacing: CGFloat,
@@ -515,7 +520,8 @@ private struct LaunchpadOverlayView: View {
                 ForEach(pageEntries) { entry in
                     entryCell(
                         for: entry,
-                        cellSize: CGSize(width: cellWidth, height: cellHeight)
+                        cellSize: CGSize(width: cellWidth, height: cellHeight),
+                        iconSide: iconSide
                     )
                     .frame(width: cellWidth, height: cellHeight)
                     .id(entry.id)
@@ -661,7 +667,7 @@ private struct LaunchpadOverlayView: View {
     }
 
     @ViewBuilder
-    private func entryCell(for entry: LaunchpadEntry, cellSize: CGSize) -> some View {
+    private func entryCell(for entry: LaunchpadEntry, cellSize: CGSize, iconSide: CGFloat) -> some View {
         let isSearching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let layoutID = layoutItemID(for: entry)
         let isDragging = dragState?.layoutItemID == layoutID
@@ -673,7 +679,7 @@ private struct LaunchpadOverlayView: View {
                 Button {
                     launch(app)
                 } label: {
-                    LaunchpadAppCard(app: app, cellSize: cellSize)
+                    LaunchpadAppCard(app: app, cellSize: cellSize, iconSide: iconSide)
                 }
                 .buttonStyle(.plain)
             case .folder(let folder):
@@ -682,7 +688,7 @@ private struct LaunchpadOverlayView: View {
                         expandedFolderID = folderLayoutID(for: folder)
                     }
                 } label: {
-                    LaunchpadFolderCard(folder: folder, cellSize: cellSize)
+                    LaunchpadFolderCard(folder: folder, cellSize: cellSize, tileSide: iconSide)
                 }
                 .buttonStyle(.plain)
             }
@@ -746,12 +752,12 @@ private struct LaunchpadOverlayView: View {
     }
 
     @ViewBuilder
-    private func floatingDragPreview(for entry: LaunchpadEntry, cellSize: CGSize) -> some View {
+    private func floatingDragPreview(for entry: LaunchpadEntry, cellSize: CGSize, iconSide: CGFloat) -> some View {
         switch entry {
         case .app(let app):
-            LaunchpadAppCard(app: app, cellSize: cellSize)
+            LaunchpadAppCard(app: app, cellSize: cellSize, iconSide: iconSide)
         case .folder(let folder):
-            LaunchpadFolderCard(folder: folder, cellSize: cellSize)
+            LaunchpadFolderCard(folder: folder, cellSize: cellSize, tileSide: iconSide)
         }
     }
 
@@ -792,20 +798,17 @@ private struct LaunchpadOverlayView: View {
         guard var state = dragState else { return }
         state.location = value.location
         let resolution = resolveDropTarget(at: value.location, draggedLayoutID: layoutID)
-        state.targetIndex = resolution.insertionIndex
 
-        // Merge dwell: if the cursor is centered over a candidate
-        // tile, schedule the cell to convert to a merge target after
-        // a short pause. Any sideways movement that re-resolves to a
-        // different cell cancels the dwell.
+        // Cursor in the middle band of a target cell ⇒ merge mode:
+        // freeze the live shift and highlight the target. Cursor in
+        // the side bands or in a gap ⇒ live shift, no merge.
         if let candidate = resolution.mergeCandidateID, candidate != layoutID {
-            if state.mergeTargetItemID != candidate {
-                state.mergeTargetItemID = nil
-                scheduleMergeDwell(for: candidate)
-            }
+            state.mergeTargetItemID = candidate
+            // Don't update targetIndex — keep displayedEntries frozen
+            // so the target stays under the cursor.
         } else {
             state.mergeTargetItemID = nil
-            cancelMergeDwell()
+            state.targetIndex = resolution.insertionIndex
         }
 
         withAnimation(.spring(duration: 0.32, bounce: 0.18)) {
@@ -815,7 +818,6 @@ private struct LaunchpadOverlayView: View {
 
     private func handleDragEnd(layoutID: String, value: DragGesture.Value) {
         defer {
-            cancelMergeDwell()
             withAnimation(.spring(duration: 0.28, bounce: 0.2)) {
                 dragState = nil
             }
@@ -876,8 +878,10 @@ private struct LaunchpadOverlayView: View {
         let hit = directHit ?? nearestHit.map { (entryIndex: $0.entryIndex, frame: $0.frame, id: $0.id) }
         guard let hit else { return DropResolution(insertionIndex: entries.count, mergeCandidateID: nil) }
 
-        // Center-half of the cell width => merge candidate.
-        let centerBand = hit.frame.insetBy(dx: hit.frame.width * 0.25, dy: 0)
+        // Center 60% of the cell width => merge candidate. The outer
+        // 20% on each side stays as the reorder zone so users can
+        // still insert tiles between neighbours.
+        let centerBand = hit.frame.insetBy(dx: hit.frame.width * 0.20, dy: 0)
         let mergeID = (directHit != nil && centerBand.minX...centerBand.maxX ~= location.x) ? hit.id : nil
 
         // Insertion index: before this cell if cursor left of midX,
@@ -885,33 +889,6 @@ private struct LaunchpadOverlayView: View {
         // own position when rendering the preview.
         let insertion = location.x < hit.frame.midX ? hit.entryIndex : hit.entryIndex + 1
         return DropResolution(insertionIndex: insertion, mergeCandidateID: mergeID)
-    }
-
-    private func scheduleMergeDwell(for candidateID: String) {
-        cancelMergeDwell()
-        let dwell = Self.mergeDwellDuration
-        mergeDwellTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: UInt64(dwell * 1_000_000_000))
-            guard !Task.isCancelled else { return }
-            // The drag may have re-resolved away from this candidate
-            // before the dwell expired — only commit if it's still the
-            // candidate the user is hovering on.
-            guard var state = dragState else { return }
-            // We require the drag's last resolution to still match
-            // the candidate; the gesture closure refreshes state on
-            // every move, so checking the most recent target is enough.
-            let resolution = resolveDropTarget(at: state.location, draggedLayoutID: state.layoutItemID)
-            guard resolution.mergeCandidateID == candidateID else { return }
-            state.mergeTargetItemID = candidateID
-            withAnimation(.spring(duration: 0.25, bounce: 0.22)) {
-                dragState = state
-            }
-        }
-    }
-
-    private func cancelMergeDwell() {
-        mergeDwellTask?.cancel()
-        mergeDwellTask = nil
     }
 
     private func performMerge(draggedLayoutID: String, targetLayoutID: String) {
@@ -1204,6 +1181,10 @@ private struct LaunchpadOverlayView: View {
 private struct LaunchpadAppCard: View {
     let app: AppTile
     let cellSize: CGSize
+    /// Rendered icon edge. Decoupled from `cellSize.width` so square cells
+    /// can be larger than the icon (extra width becomes horizontal padding
+    /// around the icon).
+    let iconSide: CGFloat
     @Bindable private var preferences = DockyPreferences.shared
 
     var body: some View {
@@ -1230,12 +1211,6 @@ private struct LaunchpadAppCard: View {
     private var cellSpacing: CGFloat {
         cellSize.height * 0.04
     }
-
-    /// Icon fills the cell horizontally. The body sizes the cell so its
-    /// width equals the launchpad's scaled icon size (128 px at the 1440p
-    /// reference, scaled linearly elsewhere), so this also drives the
-    /// rendered icon size.
-    private var iconSide: CGFloat { cellSize.width }
 
     /// Optional per-icon padding applied around override icons (only when
     /// the user has set a custom icon for this app).
@@ -1308,6 +1283,10 @@ private struct AsyncAppIcon: View {
 private struct LaunchpadFolderCard: View {
     let folder: AppFolderTile
     let cellSize: CGSize
+    /// Matches `LaunchpadAppCard.iconSide` so folder tiles render the same
+    /// drawn size as app tiles in the launchpad grid, regardless of how
+    /// much horizontal padding the square cell adds.
+    let tileSide: CGFloat
     @Bindable private var preferences = DockyPreferences.shared
 
     private static let gridDimension = 3
@@ -1379,10 +1358,6 @@ private struct LaunchpadFolderCard: View {
         .frame(width: tileSide, height: tileSide)
     }
 
-    /// Matches `LaunchpadAppCard.iconSide` so folder tiles render the same
-    /// size as app tiles in the launchpad grid.
-    private var tileSide: CGFloat { cellSize.width }
-
     private func overrideIconPadding(for bundleIdentifier: String, side: CGFloat) -> CGFloat {
         guard preferences.effectiveAppIconOverrideURL(forBundleIdentifier: bundleIdentifier) != nil else {
             return 0
@@ -1414,6 +1389,9 @@ private struct ExpandedFolderOverlay: View {
     /// uses, so the rounding is visually continuous through the expand
     /// animation.
     let sourceCellSize: CGSize
+    /// Drawn icon edge in the source launchpad grid. The expanded folder
+    /// renders its app cards at the same icon size for visual continuity.
+    let sourceIconSide: CGFloat
     /// Same column/row count as the underlying launchpad page so the
     /// expanded folder reads as a 1:1 mini-launchpad. Cell size scales
     /// down to fit because the card is only `(1 - 2 * edgePaddingFraction)`
@@ -1562,7 +1540,7 @@ private struct ExpandedFolderOverlay: View {
                     Button {
                         onLaunch(app)
                     } label: {
-                        LaunchpadAppCard(app: app, cellSize: cellSize)
+                        LaunchpadAppCard(app: app, cellSize: cellSize, iconSide: sourceIconSide)
                     }
                     .buttonStyle(.plain)
                     .contextMenu {

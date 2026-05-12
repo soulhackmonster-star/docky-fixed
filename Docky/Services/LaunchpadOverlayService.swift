@@ -7,6 +7,7 @@ import AppKit
 import Combine
 import CoreImage
 import Foundation
+import Observation
 
 /// What the launchpad grid shows: either an app at the top of /Applications,
 /// or a subfolder of /Applications represented as a dock-style app folder
@@ -123,6 +124,12 @@ final class LaunchpadOverlayService: ObservableObject {
     private var pendingRescan: DispatchWorkItem?
     private var wallpaperLuminanceSubscription: AnyCancellable?
     private static let luminanceContext = CIContext(options: [.workingColorSpace: NSNull()])
+
+    /// Cached app metadata from the most recent filesystem scan. The
+    /// layout service can mutate independently of the scan (drag-and-drop,
+    /// rename, ungroup); we re-resolve `entries` against this cache so
+    /// the grid updates immediately without waiting for another scan.
+    private var appsByBundleID: [String: AppTile] = [:]
 
     private init() {
         startWatchingApplicationDirectories()
@@ -270,6 +277,8 @@ final class LaunchpadOverlayService: ObservableObject {
 
     @MainActor
     private func applyScan(_ scan: LaunchpadScan) {
+        appsByBundleID = scan.appsByBundleID
+
         let layoutService = LaunchpadLayoutService.shared
 
         // First launch: import the alpha-sorted FS structure (apps +
@@ -286,10 +295,37 @@ final class LaunchpadOverlayService: ObservableObject {
             $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
         })
 
+        recomputeEntries()
+        observeLayoutChanges()
+    }
+
+    /// Pushes the freshest layout into `entries`. Triggered both by
+    /// filesystem rescans (via `applyScan`) and by user-driven layout
+    /// mutations (via the observation hook below).
+    @MainActor
+    private func recomputeEntries() {
         entries = Self.resolveEntries(
-            layout: layoutService.layout,
-            appsByBundleID: scan.appsByBundleID
+            layout: LaunchpadLayoutService.shared.layout,
+            appsByBundleID: appsByBundleID
         )
+    }
+
+    /// Re-runs `recomputeEntries` whenever the layout service publishes
+    /// a change. Re-registers the tracking closure each time because
+    /// `withObservationTracking` is single-shot.
+    @MainActor
+    private func observeLayoutChanges() {
+        withObservationTracking { [weak self] in
+            // Touch the layout so Observation records a dependency.
+            _ = LaunchpadLayoutService.shared.layout
+            _ = self
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.recomputeEntries()
+                self.observeLayoutChanges()
+            }
+        }
     }
 
     /// Resolves the persisted layout against the live filesystem
