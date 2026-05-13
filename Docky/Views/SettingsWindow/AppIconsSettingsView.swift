@@ -11,6 +11,8 @@ struct AppIconsSettingsView: View {
     @Bindable private var preferences = DockyPreferences.shared
     @ObservedObject private var product = ProductService.shared
     @ObservedObject private var workspace = WorkspaceService.shared
+    @State private var otherApps: [AppIconSettingsEntry] = []
+    @State private var otherAppsLoaded = false
 
     var body: some View {
         Form {
@@ -69,8 +71,67 @@ struct AppIconsSettingsView: View {
                     }
                 }
             }
+
+            Section("Other Apps") {
+                Text("Apps installed on this Mac that aren't currently in your dock. Set their icon ahead of time and it'll be ready when you add them.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !otherAppsLoaded {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Scanning…")
+                            .foregroundStyle(.secondary)
+                    }
+                } else if otherApps.isEmpty {
+                    Text("No other apps found in /Applications, /System/Applications, or ~/Applications.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(otherApps) { entry in
+                        AppIconOverrideRow(entry: entry)
+                            .padding(.vertical, 4)
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
+        .task(id: dockBundleIDsSignature) {
+            await refreshOtherApps()
+        }
+    }
+
+    /// Stable string fingerprint of every bundle id already shown in
+    /// the Overrides section. When the dock's app set changes (pin,
+    /// launch, drag) this re-fires `refreshOtherApps()` so a freshly
+    /// pinned app moves out of "Other Apps" without a restart.
+    private var dockBundleIDsSignature: String {
+        appEntries.map(\.bundleIdentifier).sorted().joined(separator: ",")
+    }
+
+    /// Walks `/Applications`, `/System/Applications`, `~/Applications`
+    /// (top level + one subfolder deep) off the main actor, then
+    /// rebuilds `otherApps` with everything that isn't already in
+    /// `appEntries`. Bundle ids are deduped; the first occurrence
+    /// across roots wins (matching `LaunchpadOverlayService`).
+    private func refreshOtherApps() async {
+        let excluded = Set(appEntries.map(\.bundleIdentifier))
+        let scanned: [AppIconSettingsEntry] = await Task.detached(priority: .userInitiated) {
+            AppIconsInstalledAppScanner.scan()
+        }.value
+
+        let filtered = scanned
+            .filter { !excluded.contains($0.bundleIdentifier) }
+            .sorted { lhs, rhs in
+                let comparison = lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+                if comparison == .orderedSame {
+                    return lhs.bundleIdentifier.localizedCaseInsensitiveCompare(rhs.bundleIdentifier) == .orderedAscending
+                }
+                return comparison == .orderedAscending
+            }
+
+        otherApps = filtered
+        otherAppsLoaded = true
     }
 
     private var appEntries: [AppIconSettingsEntry] {
@@ -97,8 +158,7 @@ struct AppIconsSettingsView: View {
             return AppIconSettingsEntry(
                 bundleIdentifier: bundleIdentifier,
                 displayName: displayName,
-                subtitle: subtitle,
-                systemIcon: IconCacheService.shared.icon(forBundleIdentifier: bundleIdentifier)
+                subtitle: subtitle
             )
         }
         .sorted { lhs, rhs in
@@ -259,7 +319,9 @@ private struct AppIconOverrideRow: View {
     /// theme icon → system icon. Reading via
     /// `effectiveAppIconOverrideURL` keeps this in lockstep with the
     /// tile views so the settings preview never disagrees with the
-    /// running dock.
+    /// running dock. System-icon fallback is fetched on demand from
+    /// the cache so the Others section doesn't pay for 200+ icon
+    /// loads up front.
     private var previewImage: NSImage {
         if let effectiveURL = preferences.effectiveAppIconOverrideURL(
             forBundleIdentifier: entry.bundleIdentifier
@@ -267,7 +329,7 @@ private struct AppIconOverrideRow: View {
             return image
         }
 
-        return entry.systemIcon
+        return IconCacheService.shared.icon(forBundleIdentifier: entry.bundleIdentifier)
     }
 
     private func chooseOverrideImage() {
@@ -286,13 +348,84 @@ private struct AppIconOverrideRow: View {
     }
 }
 
-private struct AppIconSettingsEntry: Identifiable {
+private struct AppIconSettingsEntry: Identifiable, Sendable {
     let bundleIdentifier: String
     let displayName: String
     let subtitle: String
-    let systemIcon: NSImage
 
     var id: String { bundleIdentifier }
+}
+
+/// Off-main scanner that walks the standard application directories
+/// and returns one `AppIconSettingsEntry` per discovered `.app`.
+/// Bundle ids are deduped (first occurrence wins). Skips Docky
+/// itself so users can't accidentally override the running app's
+/// own icon. Icons are *not* loaded here — preview rows fetch them
+/// lazily from `IconCacheService` so a 200-app scan stays cheap.
+private enum AppIconsInstalledAppScanner {
+    static func scan() -> [AppIconSettingsEntry] {
+        let roots: [URL] = [
+            URL(fileURLWithPath: "/Applications", isDirectory: true),
+            URL(fileURLWithPath: "/System/Applications", isDirectory: true),
+            URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+                .appending(path: "Applications", directoryHint: .isDirectory),
+        ]
+
+        let fileManager = FileManager.default
+        let selfBundleIdentifier = Bundle.main.bundleIdentifier
+        var seen: [String: AppIconSettingsEntry] = [:]
+
+        for root in roots {
+            guard let topLevel = try? fileManager.contentsOfDirectory(
+                at: root,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+
+            for url in topLevel {
+                if url.pathExtension == "app" {
+                    addEntry(at: url, into: &seen, skipping: selfBundleIdentifier)
+                    continue
+                }
+
+                // One subfolder deep covers `/Applications/Utilities`
+                // and similar collection directories without
+                // wandering into arbitrary user folders.
+                let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+                guard isDirectory else { continue }
+
+                guard let nested = try? fileManager.contentsOfDirectory(
+                    at: url,
+                    includingPropertiesForKeys: nil,
+                    options: [.skipsHiddenFiles]
+                ) else { continue }
+
+                for nestedURL in nested where nestedURL.pathExtension == "app" {
+                    addEntry(at: nestedURL, into: &seen, skipping: selfBundleIdentifier)
+                }
+            }
+        }
+
+        return Array(seen.values)
+    }
+
+    private static func addEntry(
+        at url: URL,
+        into entries: inout [String: AppIconSettingsEntry],
+        skipping selfBundleIdentifier: String?
+    ) {
+        guard let bundleIdentifier = Bundle(url: url)?.bundleIdentifier,
+              !bundleIdentifier.isEmpty,
+              bundleIdentifier != selfBundleIdentifier,
+              entries[bundleIdentifier] == nil else { return }
+
+        let displayName = FileManager.default.displayName(atPath: url.path)
+        entries[bundleIdentifier] = AppIconSettingsEntry(
+            bundleIdentifier: bundleIdentifier,
+            displayName: displayName,
+            subtitle: bundleIdentifier
+        )
+    }
 }
 
 private struct TrashIconOverrideRow: View {
