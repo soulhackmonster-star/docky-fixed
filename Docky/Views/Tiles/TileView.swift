@@ -16,6 +16,11 @@ struct TileView: View {
     let isDragging: Bool
     let isDocumentDropTarget: Bool
     let isAppFolderDropTarget: Bool
+    /// Caller-supplied icon extent, set when magnification is active so
+    /// proportional metrics (corner radius, content padding) scale with
+    /// the rendered frame instead of staying at the resting tile size.
+    /// `nil` falls back to the shared `DockLayoutService` size.
+    let renderedTileSize: CGFloat?
     @ObservedObject private var dockSettings = DockSettingsService.shared
     @ObservedObject private var layout = DockLayoutService.shared
     @Bindable private var preferences = DockyPreferences.shared
@@ -48,12 +53,14 @@ struct TileView: View {
         tile: Tile,
         isDragging: Bool = false,
         isDocumentDropTarget: Bool = false,
-        isAppFolderDropTarget: Bool = false
+        isAppFolderDropTarget: Bool = false,
+        renderedTileSize: CGFloat? = nil
     ) {
         self.tile = tile
         self.isDragging = isDragging
         self.isDocumentDropTarget = isDocumentDropTarget
         self.isAppFolderDropTarget = isAppFolderDropTarget
+        self.renderedTileSize = renderedTileSize
         self._dockSettings = ObservedObject(wrappedValue: DockSettingsService.shared)
         self._layout = ObservedObject(wrappedValue: DockLayoutService.shared)
         self._preferences = Bindable(wrappedValue: DockyPreferences.shared)
@@ -798,7 +805,7 @@ struct TileView: View {
     }
 
     private var effectiveTileSize: CGFloat {
-        layout.scaled(dockSettings.displayTileSize)
+        renderedTileSize ?? layout.scaled(dockSettings.displayTileSize)
     }
 
     private func renderedWidgetSpan(for span: TileSpan) -> TileSpan {

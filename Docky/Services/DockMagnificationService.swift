@@ -41,7 +41,17 @@ final class DockMagnificationService: ObservableObject {
     /// coordinate to track. Called from `.onContinuousHover` with
     /// `.active(location)`.
     func updatePointer(at location: CGPoint) {
-        pointerLocation = location
+        // Sub-pixel pointer jitter would publish identical-looking values
+        // and re-render the dock for nothing. Round-trip suppression keeps
+        // mouseMoved spam from spiking CPU.
+        if let current = pointerLocation,
+           abs(current.x - location.x) < 0.25,
+           abs(current.y - location.y) < 0.25 {
+            // Skip publishing, but still nudge the ramp in case strength
+            // was driving back toward zero.
+        } else {
+            pointerLocation = location
+        }
         beginRamp(to: 1)
     }
 
@@ -54,7 +64,11 @@ final class DockMagnificationService: ObservableObject {
     }
 
     private func beginRamp(to target: CGFloat) {
-        guard target != rampTarget || rampTimer == nil else { return }
+        // Already heading to (or sitting at) this target: no-op.
+        // Previously this restarted the timer on every mouseMoved once
+        // the initial ramp had finished, which kept it firing at 120Hz
+        // for the lifetime of the hover and pegged CPU.
+        if rampTarget == target { return }
         rampSource = strength
         rampTarget = target
         rampStart = CACurrentMediaTime()
@@ -63,7 +77,7 @@ final class DockMagnificationService: ObservableObject {
 
     private func startTimerIfNeeded() {
         guard rampTimer == nil else { return }
-        let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             self?.tick()
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -74,9 +88,14 @@ final class DockMagnificationService: ObservableObject {
         let elapsed = CACurrentMediaTime() - rampStart
         let t = min(1, max(0, elapsed / Self.rampDuration))
         let eased = 1 - pow(1 - t, 2)
-        strength = rampSource + (rampTarget - rampSource) * CGFloat(eased)
+        let next = rampSource + (rampTarget - rampSource) * CGFloat(eased)
+        if abs(next - strength) > 0.0001 {
+            strength = next
+        }
         guard t >= 1 else { return }
-        strength = rampTarget
+        if abs(strength - rampTarget) > 0.0001 {
+            strength = rampTarget
+        }
         if rampTarget == 0 {
             pointerLocation = nil
         }

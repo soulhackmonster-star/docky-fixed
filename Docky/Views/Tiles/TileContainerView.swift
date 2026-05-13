@@ -203,11 +203,13 @@ struct TileContainerView: View {
 
     @ViewBuilder
     private func tileView(for tile: Tile) -> some View {
-        let size = magnifiedTileSize(for: tile)
+        let iconSize = magnifiedIconSize(for: tile)
+        let size = magnifiedTileFrame(for: tile, iconSize: iconSize)
         TileView(
             tile: tile,
             isDocumentDropTarget: dockDrag.documentTargetTileID == tile.id,
-            isAppFolderDropTarget: draggedAppFolderTargetTileID == tile.id
+            isAppFolderDropTarget: draggedAppFolderTargetTileID == tile.id,
+            renderedTileSize: iconSize
         )
             .frame(width: size.width, height: size.height)
             .opacity(isHiddenForActiveDrag(tileID: tile.id) ? 0 : 1)
@@ -892,18 +894,35 @@ struct TileContainerView: View {
         )
     }
 
-    /// Tiles that participate in magnification. Widgets, smart stacks, and
-    /// dividers keep their natural extent; scaling those non-uniformly
-    /// would warp their internal layout.
+    /// Tiles that participate in magnification. Dividers keep their
+    /// natural extent. Widgets/smart stacks (and apps showing a widget)
+    /// only magnify when they're 1×1 — wider spans would have to scale
+    /// non-uniformly to grow, which warps their content.
     private func shouldMagnify(_ tile: Tile) -> Bool {
         switch tile.content {
         case .app(let app):
-            return app.displayedWidget == nil
+            if let widget = app.displayedWidget {
+                return effectiveWidgetSpan(widget.span) == .one
+            }
+            return true
         case .folder, .trash, .appFolder, .minimizedWindow, .launchpad, .spacer:
             return true
-        case .widget, .smartStack, .divider:
+        case .widget(let widget):
+            return effectiveWidgetSpan(widget.span) == .one
+        case .smartStack(let stack):
+            return effectiveWidgetSpan(stack.span) == .one
+        case .divider:
             return false
         }
+    }
+
+    private func effectiveWidgetSpan(_ span: TileSpan) -> TileSpan {
+        Self.effectiveWidgetSpan(
+            span,
+            tileSize: effectiveTileSize,
+            isVertical: position.isVertical,
+            compactWidgets: layout.compactsWidgetsForOverflow
+        )
     }
 
     /// Rest-axis center for a tile, computed by walking the flat display
@@ -934,30 +953,39 @@ struct TileContainerView: View {
         return nil
     }
 
-    private func magnifiedTileSize(for tile: Tile) -> CGSize {
-        let restSize = Self.size(
-            for: tile,
-            tileSize: effectiveTileSize,
-            tileHeight: tileHeight,
-            tileSpacing: effectiveTileSpacing,
-            position: position,
-            compactWidgets: layout.compactsWidgetsForOverflow
-        )
+    /// Icon-side extent for a tile after applying the magnification
+    /// falloff. Returns the rest size when magnification is suppressed or
+    /// the tile doesn't participate.
+    private func magnifiedIconSize(for tile: Tile) -> CGFloat {
         guard magnificationActive,
               shouldMagnify(tile),
               let center = restAxisCenter(forTileID: tile.id) else {
-            return restSize
+            return effectiveTileSize
         }
-        let model = magnificationModel
-        let magnifiedIcon = model.magnifiedExtent(
+        return magnificationModel.magnifiedExtent(
             restSize: effectiveTileSize,
             restAxisCenter: center
         )
-        guard magnifiedIcon > effectiveTileSize else { return restSize }
-        let magnifiedHeight = magnifiedIcon + (tileHeight - effectiveTileSize)
+    }
+
+    /// Frame to assign to the tile, computed from its magnified icon side.
+    /// Padding stays constant, matching Apple Dock's behavior where the
+    /// icon scales but the tile chrome around it remains thin.
+    private func magnifiedTileFrame(for tile: Tile, iconSize: CGFloat) -> CGSize {
+        guard iconSize > effectiveTileSize else {
+            return Self.size(
+                for: tile,
+                tileSize: effectiveTileSize,
+                tileHeight: tileHeight,
+                tileSpacing: effectiveTileSpacing,
+                position: position,
+                compactWidgets: layout.compactsWidgetsForOverflow
+            )
+        }
+        let magnifiedHeight = iconSize + (tileHeight - effectiveTileSize)
         return Self.size(
             for: tile,
-            tileSize: magnifiedIcon,
+            tileSize: iconSize,
             tileHeight: magnifiedHeight,
             tileSpacing: effectiveTileSpacing,
             position: position,
