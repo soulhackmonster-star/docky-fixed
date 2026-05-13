@@ -1938,7 +1938,7 @@ struct TileContainerView: View {
         case (false, _):
             CGSize(width: tileSize, height: tileHeight)
         case (true, .divider):
-            CGSize(width: tileHeight / 2, height: dividerExtent)
+            CGSize(width: tileHeight, height: dividerExtent)
         case (true, .app(let app)) where app.displayedWidget != nil:
             CGSize(
                 width: tileHeight,

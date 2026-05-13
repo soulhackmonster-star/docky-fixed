@@ -104,6 +104,7 @@ struct DividerTileView: View {
                 Rectangle()
                     .fill(fillColor)
                     .frame(height: 1)
+                    .padding(.horizontal, lineInset)
             } else {
                 Rectangle()
                     .fill(fillColor)
@@ -117,12 +118,26 @@ struct DividerTileView: View {
     @ViewBuilder
     private func customImageDivider(nsImage: NSImage, mirrored: Bool) -> some View {
         let imageScale = max(0.25, preferences.effectiveDividerImageScale)
-        Image(nsImage: nsImage)
+        let image = Image(nsImage: nsImage)
             .resizable()
             .aspectRatio(contentMode: .fit)
             .scaleEffect(x: (mirrored ? -1 : 1) * imageScale, y: imageScale)
-            .rotationEffect(.degrees(position.isVertical ? 90 : 0))
-            .padding(position.isVertical ? .horizontal : .vertical, lineInset)
+
+        if position.isVertical {
+            // Lay the image out in the rotated coordinate system so
+            // `aspectRatio(.fit)` sees the dimensions it will occupy *after*
+            // the 90° spin. Without this, fit operates on the pre-rotation
+            // box and the rotated image under-fills the slot's cross axis.
+            GeometryReader { proxy in
+                image
+                    .frame(width: proxy.size.height, height: proxy.size.width)
+                    .rotationEffect(.degrees(90))
+                    .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            }
+            .padding(.horizontal, lineInset)
+        } else {
+            image.padding(.vertical, lineInset)
+        }
     }
 
     private func positionClass(globalFrame: CGRect) -> DockDividerPositionClass {

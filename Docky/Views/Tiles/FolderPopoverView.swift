@@ -27,7 +27,7 @@ struct FolderPopoverView: View {
     private let maxGridColumnCount = 8
     private let gridItemWidth: CGFloat = 144
     private let gridItemHeight: CGFloat = 158
-    private let gridItemSpacing: CGFloat = 8
+    private let gridItemSpacing: CGFloat = 4
     private let contentPadding: CGFloat = 20
     private let minGridWidth: CGFloat = 320
     private let minGridHeight: CGFloat = 240
@@ -131,9 +131,9 @@ struct FolderPopoverView: View {
                     cardButton(for: item) {
                         switch item {
                         case .url(let itemURL):
-                            FolderPopoverItemView(url: itemURL, isSelected: selectedItemID == item.id)
+                            FolderPopoverItemView(url: itemURL)
                         case .action(let action):
-                            FolderPopoverActionItemView(action: action, isSelected: selectedItemID == item.id)
+                            FolderPopoverActionItemView(action: action)
                         }
                     }
                 }
@@ -573,7 +573,6 @@ private struct FolderPopoverAction: Identifiable {
 
 private struct FolderPopoverItemView: View {
     let url: URL
-    let isSelected: Bool
 
     var body: some View {
         VStack(spacing: 8) {
@@ -594,14 +593,6 @@ private struct FolderPopoverItemView: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, minHeight: 158, alignment: .top)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isSelected ? .white.opacity(0.12) : .white.opacity(0.001))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isSelected ? .white.opacity(0.22) : .clear)
-        )
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
@@ -612,7 +603,6 @@ private struct FolderPopoverItemView: View {
 
 private struct FolderPopoverActionItemView: View {
     let action: FolderPopoverAction
-    let isSelected: Bool
 
     var body: some View {
         VStack(spacing: 8) {
@@ -632,14 +622,6 @@ private struct FolderPopoverActionItemView: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, minHeight: 158, alignment: .top)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isSelected ? .white.opacity(0.12) : .white.opacity(0.001))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isSelected ? .white.opacity(0.22) : .clear)
-        )
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

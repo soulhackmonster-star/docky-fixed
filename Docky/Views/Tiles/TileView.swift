@@ -660,9 +660,19 @@ struct TileView: View {
                     .foregroundStyle(Color(nsColor: preferences.effectiveActiveIndicatorColor).opacity(0.9))
             case .image:
                 if let runningIndicatorImage {
+                    // Render the artwork in its natural (horizontal)
+                    // orientation, rotate, then claim the post-rotation
+                    // bounding box. Without the rotation the outer frame
+                    // is tall+narrow on vertical docks but aspect-fit
+                    // letterboxes the wide artwork into a sliver.
                     Image(nsImage: runningIndicatorImage)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
+                        .frame(
+                            maxWidth: runningIndicatorImageLength,
+                            maxHeight: runningIndicatorImageThickness
+                        )
+                        .rotationEffect(runningIndicatorImageRotation)
                         .frame(
                             maxWidth: runningIndicatorSize.width,
                             maxHeight: runningIndicatorSize.height
@@ -734,6 +744,10 @@ struct TileView: View {
 
     private var runningIndicatorImageLength: CGFloat {
         20 * runningIndicatorScale
+    }
+
+    private var runningIndicatorImageRotation: Angle {
+        position.isVertical ? .degrees(90) : .zero
     }
 
     private var runningIndicatorInset: CGFloat {
