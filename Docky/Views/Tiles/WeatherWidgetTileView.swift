@@ -72,7 +72,7 @@ struct WeatherWidgetTileView: View {
                 oneUp(snapshot: snapshot, layout: layout)
             case .two:
                 twoUp(snapshot: snapshot, layout: layout)
-            case .three:
+            case .three, .four:
                 threeUp(snapshot: snapshot, layout: layout)
             }
         } else {

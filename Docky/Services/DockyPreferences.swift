@@ -924,6 +924,8 @@ enum WindowSwitcherLayout: String, CaseIterable, Codable, Identifiable {
         Keys.widget2xCornerRadius,
         Keys.widget3xContentPadding,
         Keys.widget3xCornerRadius,
+        Keys.widget4xContentPadding,
+        Keys.widget4xCornerRadius,
         Keys.windowCornerRadius,
         Keys.windowCornerRadiusTopLeading,
         Keys.windowCornerRadiusTopTrailing,
@@ -1252,6 +1254,30 @@ enum WindowSwitcherLayout: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    var widget4xContentPadding: CGFloat? {
+        didSet {
+            guard widget4xContentPadding != oldValue else { return }
+            persistOptionalDouble(widget4xContentPadding, forKey: Keys.widget4xContentPadding)
+            if widget4xContentPadding == nil {
+                clearAppearanceOverride(Keys.widget4xContentPadding)
+            } else {
+                markAppearanceOverride(Keys.widget4xContentPadding)
+            }
+        }
+    }
+
+    var widget4xCornerRadius: CGFloat? {
+        didSet {
+            guard widget4xCornerRadius != oldValue else { return }
+            persistOptionalDouble(widget4xCornerRadius, forKey: Keys.widget4xCornerRadius)
+            if widget4xCornerRadius == nil {
+                clearAppearanceOverride(Keys.widget4xCornerRadius)
+            } else {
+                markAppearanceOverride(Keys.widget4xCornerRadius)
+            }
+        }
+    }
+
     /// Resolves the effective content padding override for a widget
     /// rendered at the given span. Returns `nil` if neither the user
     /// nor the theme provided one — caller falls back to its own
@@ -1285,6 +1311,7 @@ enum WindowSwitcherLayout: String, CaseIterable, Codable, Identifiable {
         case .one: (Keys.widget1xContentPadding, widget1xContentPadding)
         case .two: (Keys.widget2xContentPadding, widget2xContentPadding)
         case .three: (Keys.widget3xContentPadding, widget3xContentPadding)
+        case .four: (Keys.widget4xContentPadding, widget4xContentPadding)
         }
     }
 
@@ -1293,6 +1320,7 @@ enum WindowSwitcherLayout: String, CaseIterable, Codable, Identifiable {
         case .one: (Keys.widget1xCornerRadius, widget1xCornerRadius)
         case .two: (Keys.widget2xCornerRadius, widget2xCornerRadius)
         case .three: (Keys.widget3xCornerRadius, widget3xCornerRadius)
+        case .four: (Keys.widget4xCornerRadius, widget4xCornerRadius)
         }
     }
 
@@ -1309,6 +1337,7 @@ enum WindowSwitcherLayout: String, CaseIterable, Codable, Identifiable {
         case .one: return widgets?.oneX
         case .two: return widgets?.twoX
         case .three: return widgets?.threeX
+        case .four: return widgets?.fourX
         }
     }
 
@@ -3098,6 +3127,8 @@ enum WindowSwitcherLayout: String, CaseIterable, Codable, Identifiable {
         static let widget2xCornerRadius = "docky.widget2xCornerRadius"
         static let widget3xContentPadding = "docky.widget3xContentPadding"
         static let widget3xCornerRadius = "docky.widget3xCornerRadius"
+        static let widget4xContentPadding = "docky.widget4xContentPadding"
+        static let widget4xCornerRadius = "docky.widget4xCornerRadius"
         static let windowCornerRadius = "docky.windowCornerRadius"
         static let windowCornerRadiusTopLeading = "docky.windowCornerRadiusTopLeading"
         static let windowCornerRadiusTopTrailing = "docky.windowCornerRadiusTopTrailing"
@@ -3294,6 +3325,8 @@ enum WindowSwitcherLayout: String, CaseIterable, Codable, Identifiable {
         let storedWidget2xCornerRadius = defaults.object(forKey: Keys.widget2xCornerRadius) as? Double
         let storedWidget3xContentPadding = defaults.object(forKey: Keys.widget3xContentPadding) as? Double
         let storedWidget3xCornerRadius = defaults.object(forKey: Keys.widget3xCornerRadius) as? Double
+        let storedWidget4xContentPadding = defaults.object(forKey: Keys.widget4xContentPadding) as? Double
+        let storedWidget4xCornerRadius = defaults.object(forKey: Keys.widget4xCornerRadius) as? Double
         let storedWindowCornerRadius = defaults.object(forKey: Keys.windowCornerRadius) as? Double
         let storedWindowCornerRadiusTopLeading = defaults.object(forKey: Keys.windowCornerRadiusTopLeading) as? Double
         let storedWindowCornerRadiusTopTrailing = defaults.object(forKey: Keys.windowCornerRadiusTopTrailing) as? Double
@@ -3399,6 +3432,8 @@ enum WindowSwitcherLayout: String, CaseIterable, Codable, Identifiable {
         self.widget2xCornerRadius = storedWidget2xCornerRadius.map { CGFloat($0) }
         self.widget3xContentPadding = storedWidget3xContentPadding.map { CGFloat($0) }
         self.widget3xCornerRadius = storedWidget3xCornerRadius.map { CGFloat($0) }
+        self.widget4xContentPadding = storedWidget4xContentPadding.map { CGFloat($0) }
+        self.widget4xCornerRadius = storedWidget4xCornerRadius.map { CGFloat($0) }
         self.windowCornerRadius = storedWindowCornerRadius.map { CGFloat($0) } ?? DefaultValues.windowCornerRadius
         self.windowCornerRadiusTopLeading = storedWindowCornerRadiusTopLeading.map { CGFloat($0) }
         self.windowCornerRadiusTopTrailing = storedWindowCornerRadiusTopTrailing.map { CGFloat($0) }
@@ -3597,6 +3632,8 @@ enum WindowSwitcherLayout: String, CaseIterable, Codable, Identifiable {
         widget2xCornerRadius = nil
         widget3xContentPadding = nil
         widget3xCornerRadius = nil
+        widget4xContentPadding = nil
+        widget4xCornerRadius = nil
 
         // Icon Shadow (lives next to Tile Layout in the UI)
         iconShadowColor = DefaultValues.iconShadowColor

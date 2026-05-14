@@ -386,7 +386,9 @@ struct BehaviorSettingsView: View {
                 Text("Apply To Sizes")
                     .font(.headline)
 
-                ForEach(TileSpan.allCases) { span in
+                // `.four` is theme-only; skip it in the user-facing
+                // hover-preview span toggles.
+                ForEach(TileSpan.allCases.filter { $0 != .four }) { span in
                     Toggle(spanTitle(for: span), isOn: spanBinding(for: span))
                 }
 
@@ -494,6 +496,7 @@ struct BehaviorSettingsView: View {
         case .one: "Small"
         case .two: "Medium"
         case .three: "Large"
+        case .four: "Extra Large"
         }
     }
 

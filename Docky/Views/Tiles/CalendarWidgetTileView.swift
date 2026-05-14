@@ -73,7 +73,7 @@ struct CalendarWidgetTileView: View {
                 oneUp(event: event, layout: layout, now: now)
             case .two:
                 twoUp(event: event, layout: layout, now: now)
-            case .three:
+            case .three, .four:
                 threeUp(event: event, layout: layout, now: now)
             }
         } else {

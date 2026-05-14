@@ -12,7 +12,7 @@
   },
   "layout": {
     "insertions": [
-      { "kind": "search", "span": 3, "after": "pinned:com.apple.finder" },
+      { "kind": "search", "span": 4, "after": "pinned:com.apple.finder" },
       { "kind": "flexibleSpacer", "after": "divider:trailing" }
     ]
   },
@@ -52,7 +52,8 @@
     },
     "widgets": {
       "twoX": { "contentPadding": 0, "cornerRadius": 0, "ignoresAddedPaddings": true },
-      "threeX": { "contentPadding": 0, "cornerRadius": 0, "ignoresAddedPaddings": true }
+      "threeX": { "contentPadding": 0, "cornerRadius": 0, "ignoresAddedPaddings": true },
+      "fourX": { "contentPadding": 0, "cornerRadius": 0, "ignoresAddedPaddings": true }
     },
     "window": {
       "clipShape": "rounded",

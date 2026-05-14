@@ -158,7 +158,7 @@ struct BatteriesWidgetTileView: View {
             1
         case .two:
             2
-        case .three:
+        case .three, .four:
             4
         }
     }

@@ -52,7 +52,7 @@ struct RemindersWidgetTileView: View {
                 oneUp(item: nextItem, layout: layout, now: now)
             case .two:
                 twoUp(item: nextItem, layout: layout, now: now)
-            case .three:
+            case .three, .four:
                 threeUp(item: nextItem, layout: layout, now: now)
             }
         } else {

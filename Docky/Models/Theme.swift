@@ -126,6 +126,7 @@ struct ThemeWidgets: Codable, Equatable {
     var oneX: ThemeWidgetSpan?
     var twoX: ThemeWidgetSpan?
     var threeX: ThemeWidgetSpan?
+    var fourX: ThemeWidgetSpan?
 }
 
 struct ThemeWidgetSpan: Codable, Equatable {

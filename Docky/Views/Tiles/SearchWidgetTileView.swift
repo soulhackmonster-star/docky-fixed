@@ -38,9 +38,11 @@ struct SearchWidgetTileView: View {
             let metrics = layout(in: proxy.size)
             ZStack {
                 Rectangle()
-                    .fill(.white)
+                    .fill(.primary)
                 content(metrics: metrics)
             }
+            .colorScheme(.dark)
+            .padding(.horizontal, renderedSpan != .one ? 12 : 0)
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .onChange(of: isFieldFocused) { focused in
@@ -66,12 +68,12 @@ struct SearchWidgetTileView: View {
         case .one:
             Image(systemName: "magnifyingglass")
                 .font(.system(size: metrics.iconSize, weight: .semibold))
-                .foregroundStyle(.black)
-        case .two, .three:
+                .foregroundStyle(.background)
+        case .two, .three, .four:
             HStack(spacing: metrics.iconTextSpacing) {
                 Image(systemName: "magnifyingglass")
                     .font(.body)
-                    .foregroundStyle(.background)
+                    .foregroundStyle(.primary)
                     .opacity(0.9)
                 // ZStack so we can paint a black placeholder explicitly —
                 // SwiftUI's TextField placeholder inherits secondary
@@ -86,7 +88,6 @@ struct SearchWidgetTileView: View {
                             .foregroundStyle(Color.black)
                     }
                     TextField("", text: $query)
-                        .tint(.black)
                         .textFieldStyle(.plain)
                         .font(.body)
                         .focused($isFieldFocused)
@@ -96,9 +97,9 @@ struct SearchWidgetTileView: View {
             }
             .padding(.horizontal, metrics.horizontalInset)
             .padding(.vertical, 4)
-            .background(.white)
-            .foregroundStyle(.black)
-            .padding(.horizontal, 4)
+            .background(.clear)
+            .foregroundStyle(.background)
+            .preferredColorScheme(.dark)
         }
     }
 

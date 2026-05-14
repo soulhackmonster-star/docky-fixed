@@ -985,7 +985,12 @@ struct TileView: View {
     }
 
     private var availableWidgetSpans: [TileSpan] {
-        position.isVertical ? [.one] : TileSpan.allCases
+        // `.four` is theme-only: it can be injected via
+        // `layout.insertions` but is not surfaced in the user's "Span"
+        // submenu / palette so the widget editor stays focused on the
+        // three user-facing sizes.
+        let userFacing = TileSpan.allCases.filter { $0 != .four }
+        return position.isVertical ? [.one] : userFacing
     }
 
     private var nonAppTileCornerRadius: CGFloat {
@@ -2117,6 +2122,8 @@ struct TileView: View {
             "2 Tiles"
         case .three:
             "3 Tiles"
+        case .four:
+            "4 Tiles"
         }
     }
 

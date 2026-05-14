@@ -70,7 +70,7 @@ struct NowPlayingWidgetTileView: View {
             nowPlayingOneUp(layout: layout)
         case .two:
             nowPlayingTwoUp(layout: layout)
-        case .three:
+        case .three, .four:
             nowPlayingThreeUp(layout: layout)
         }
     }
