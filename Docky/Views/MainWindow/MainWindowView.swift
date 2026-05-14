@@ -238,11 +238,19 @@ struct LiquidGlassChromeView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSView {
         let view: NSView
+        #if !APP_STORE_SANDBOX
+        // `NSGlassEffectView` is a private AppKit class. Apple's MAS
+        // binary scanner flags `NSClassFromString("NS...")` strings
+        // for known-private classes; keep the literal inside this
+        // gate so the MAS binary has no reference to it.
         if let cls = NSClassFromString("NSGlassEffectView") as? NSView.Type {
             view = cls.init(frame: .zero)
         } else {
             view = NSView(frame: .zero)
         }
+        #else
+        view = NSView(frame: .zero)
+        #endif
         view.wantsLayer = true
         apply(to: view)
         return view
@@ -260,8 +268,10 @@ struct LiquidGlassChromeView: NSViewRepresentable {
     }
 
     private func applyVariant(to view: NSView) {
-        // Try the private `set_variant:` first (what NSGlassEffectView
-        // actually exposes), then a hypothetical public `setVariant:`.
+        #if !APP_STORE_SANDBOX
+        // Private `set_variant:` selector. Same scanner rule applies:
+        // `NSSelectorFromString` calls for known-private selectors
+        // can be flagged. Stay behind the gate.
         for name in ["set_variant:", "setVariant:"] {
             let sel = NSSelectorFromString(name)
             guard view.responds(to: sel),
@@ -271,6 +281,10 @@ struct LiquidGlassChromeView: NSViewRepresentable {
             setter(view, sel, Int64(variant))
             return
         }
+        #endif
+        // MAS path: no variant tinting available; the plain NSView
+        // host produces an empty glass layer (visually equivalent to
+        // disabling glass).
     }
 }
 

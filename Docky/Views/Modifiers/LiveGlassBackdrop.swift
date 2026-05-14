@@ -44,12 +44,18 @@ final class LiveGlassBackdropView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not available") }
 
     override func makeBackingLayer() -> CALayer {
+        #if !APP_STORE_SANDBOX
+        // `CABackdropLayer` is a private Core Animation class. The
+        // literal name lives only inside this gate so the MAS binary
+        // has no string reference to it (App Review's scanner flags
+        // private class names regardless of whether they're called).
         if let cls = NSClassFromString("CABackdropLayer") as? CALayer.Type {
             return cls.init()
         }
-        // Fallback when the private class is unavailable: a plain CALayer
-        // renders nothing, so the chrome silently degrades to no material
-        // rather than crashing.
+        #endif
+        // Fallback when the private class is unavailable (or MAS
+        // build): a plain CALayer renders nothing, so the chrome
+        // silently degrades to no material rather than crashing.
         return CALayer()
     }
 
@@ -62,6 +68,12 @@ final class LiveGlassBackdropView: NSView {
     }
 
     private func makeFilters(blurRadius: Double, saturation: Double) -> [Any] {
+        #if APP_STORE_SANDBOX
+        // No `CAFilter` private class on the MAS build, returns no
+        // filters. Combined with the plain `CALayer` backing above,
+        // the chrome shows whatever SwiftUI material was declared.
+        return []
+        #else
         guard let filterClass = NSClassFromString("CAFilter") as? NSObject.Type else {
             return []
         }
@@ -78,8 +90,10 @@ final class LiveGlassBackdropView: NSView {
             filters.append(saturate)
         }
         return filters
+        #endif
     }
 
+    #if !APP_STORE_SANDBOX
     private func filterInstance(
         filterClass: NSObject.Type,
         selector: Selector,
@@ -88,4 +102,5 @@ final class LiveGlassBackdropView: NSView {
         let result = filterClass.perform(selector, with: type)
         return result?.takeUnretainedValue() as? NSObject
     }
+    #endif
 }

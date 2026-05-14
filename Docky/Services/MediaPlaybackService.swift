@@ -459,9 +459,19 @@ private final class MediaRemoteBridge {
     private var lastActiveBundleIdentifier: String?
 
     private init() {
+        #if !APP_STORE_SANDBOX
+        // Private framework bundle path. Apple's binary scanner
+        // rejects MAS submissions that contain string references to
+        // `/System/Library/PrivateFrameworks/*`, so the path lives
+        // exclusively inside this gate. The MAS build's Now Playing
+        // widget is hidden entirely (via HelperBridge.isAvailable),
+        // and `sendRemoteCommand` is nil so any stray send is a no-op.
         let bundleURL = NSURL(fileURLWithPath: "/System/Library/PrivateFrameworks/MediaRemote.framework")
         let bundle = CFBundleCreate(kCFAllocatorDefault, bundleURL)
         self.sendRemoteCommand = Self.function(named: "MRMediaRemoteSendCommand", in: bundle)
+        #else
+        self.sendRemoteCommand = nil
+        #endif
 
         helper.onSnapshot = { [weak self] snapshot in
             self?.handle(snapshot)
@@ -683,6 +693,14 @@ private final class MediaRemoteHelperProcess {
     }
 
     private func resolveLaunchConfiguration() -> HelperLaunchConfiguration? {
+        #if APP_STORE_SANDBOX
+        // The MAS bundle doesn't ship `mediaremote-adapter.pl` (the
+        // build phase that copies it is excluded for that target),
+        // and `/usr/bin/perl` subprocess launches are blocked by the
+        // sandbox anyway. Return nil so the helper process stays
+        // dormant; the Now Playing widget is hidden by HelperBridge.
+        return nil
+        #else
         guard let scriptURL = Bundle.main.url(forResource: "mediaremote-adapter", withExtension: "pl"),
               let frameworkPath = Bundle.main.privateFrameworksPath?.appending("/MediaRemoteAdapter.framework") else {
             return nil
@@ -693,6 +711,7 @@ private final class MediaRemoteHelperProcess {
             executablePath: "/usr/bin/perl",
             arguments: [scriptURL.path, frameworkPath, "stream"]
         )
+        #endif
     }
 }
 

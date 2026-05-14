@@ -213,6 +213,7 @@ final class WorkspaceService: ObservableObject {
             return appWindowPreviews[window.windowIdentifier]
         }
 
+        #if !APP_STORE_SANDBOX
         if let cgWindowID = window.cgWindowID,
            let cgImage = CGWindowListCreateImagePrivate(
                .null,
@@ -222,7 +223,10 @@ final class WorkspaceService: ObservableObject {
            ) {
             return makeFullSizeImage(from: cgImage)
         }
-
+        #endif
+        // MAS path: skip the private-API fast path, fall through to
+        // the public ScreenCaptureKit route below (slower, requires
+        // Screen Recording permission, but legal).
         return await captureFullSizeAppWindowImage(for: window) ?? appWindowPreviews[window.windowIdentifier]
     }
 
@@ -807,6 +811,7 @@ final class WorkspaceService: ObservableObject {
             return nil
         }
 
+        #if !APP_STORE_SANDBOX
         if let windowNumber = window.windowNumber,
            let cgImage = CGWindowListCreateImagePrivate(
                .null,
@@ -816,6 +821,7 @@ final class WorkspaceService: ObservableObject {
            ) {
             return makeThumbnail(from: cgImage, maxSize: CGSize(width: 480, height: 300))
         }
+        #endif
 
         do {
             let shareableContent: SCShareableContent
@@ -838,6 +844,7 @@ final class WorkspaceService: ObservableObject {
                 return nil
             }
 
+            #if !APP_STORE_SANDBOX
             if let cgImage = CGWindowListCreateImagePrivate(
                 .null,
                 [.optionIncludingWindow],
@@ -846,6 +853,7 @@ final class WorkspaceService: ObservableObject {
             ) {
                 return makeThumbnail(from: cgImage, maxSize: CGSize(width: 480, height: 300))
             }
+            #endif
 
             let configuration = SCStreamConfiguration()
             let captureSize = constrainedCaptureSize(for: shareableWindow.frame.size)
@@ -916,6 +924,7 @@ final class WorkspaceService: ObservableObject {
                 return nil
             }
 
+            #if !APP_STORE_SANDBOX
             if let cgImage = CGWindowListCreateImagePrivate(
                 .null,
                 [.optionIncludingWindow],
@@ -924,6 +933,7 @@ final class WorkspaceService: ObservableObject {
             ) {
                 return makeThumbnail(from: cgImage, maxSize: CGSize(width: 320, height: 200))
             }
+            #endif
 
             let configuration = SCStreamConfiguration()
             let captureSize = constrainedCaptureSize(for: shareableWindow.frame.size)

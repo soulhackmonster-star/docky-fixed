@@ -226,23 +226,32 @@ final class WindowRegistry: ObservableObject {
     }
 
     private func focusViaSLPS(pid: pid_t, cgWindowID: CGWindowID, element: AXUIElement) -> Bool {
+        #if APP_STORE_SANDBOX
+        // SLPS / ProcessSerialNumber types are stripped from the MAS
+        // build. Without per-window front control we fall back to the
+        // caller's AX raise path, which is slightly worse (whole app
+        // comes forward) but legal. Returning false here causes the
+        // caller (`focus(_:)`) to take its AX fallback branch.
+        return false
+        #else
         var psn = ProcessSerialNumber()
         guard GetProcessForPID(pid, &psn) == noErr else { return false }
 
         let result = _SLPSSetFrontProcessWithOptions(&psn, cgWindowID, SLPSMode.userGenerated.rawValue)
         guard result == .success else { return false }
 
-        // Synthetic event handshake — without this the window comes up but
+        // Synthetic event handshake, without this the window comes up but
         // keyboard input still routes to the previous app.
         slpsMakeKeyWindow(psn: &psn, windowID: cgWindowID)
 
         // Best-effort: AX raise to confirm Z-order in AX, and mark as main so
         // the app's "main window changed" hooks fire. Failures here don't
-        // unwind — the SLPS call already brought the window front.
+        // unwind, the SLPS call already brought the window front.
         _ = AXUIElementPerformAction(element, kAXRaiseAction as CFString)
         _ = AXUIElementSetAttributeValue(element, kAXMainWindowAttribute as CFString, kCFBooleanTrue)
 
         return true
+        #endif
     }
 
     @discardableResult
@@ -630,6 +639,7 @@ final class WindowRegistry: ObservableObject {
         }
 
         // AX element identity didn't match — try the system CGWindowID.
+        #if !APP_STORE_SANDBOX
         var wid: CGWindowID = 0
         if _AXUIElementGetWindow(element, &wid) == .success,
            wid != 0,
@@ -639,6 +649,7 @@ final class WindowRegistry: ObservableObject {
             windows.insert(window, at: 0)
             return
         }
+        #endif
 
         // Last resort: window isn't in the registry yet. Refresh the app's
         // windows so the next focus event (or the AX-create notification we
@@ -868,9 +879,18 @@ final class WindowRegistry: ObservableObject {
     }
 
     private func cgWindowID(of element: AXUIElement) -> CGWindowID? {
+        #if APP_STORE_SANDBOX
+        // `_AXUIElementGetWindow` is private SkyLight, stripped from
+        // the MAS build. Without it we can't correlate AX elements
+        // to CGWindowIDs, so the registry stores `nil` and any code
+        // that needed it (e.g., SLPS focus, private window capture)
+        // falls back to its public-API path.
+        return nil
+        #else
         var id: CGWindowID = 0
         guard _AXUIElementGetWindow(element, &id) == .success, id != 0 else { return nil }
         return id
+        #endif
     }
 
     private func frameAttribute(of element: AXUIElement) -> CGRect? {

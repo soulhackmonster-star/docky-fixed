@@ -254,6 +254,18 @@ private enum FeedbackBundle {
     /// zip (preserves resource forks / extended attrs, deterministic,
     /// no third-party deps).
     private static func ditto(source: URL, destination: URL) throws {
+        #if APP_STORE_SANDBOX
+        // Sandbox blocks /usr/bin/* subprocess launches. The MAS
+        // build's feedback flow ships the staging directory as-is
+        // (the share sheet attaches a folder reference instead of a
+        // single zip). Until we wire up ZIPFoundation, fall back to
+        // attaching the directory tree directly: copy `source` to
+        // `destination` so callers can still hand a single URL to
+        // NSSharingService.
+        let fileManager = FileManager.default
+        try fileManager.removeItemIfExists(at: destination)
+        try fileManager.copyItem(at: source, to: destination)
+        #else
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
         process.arguments = ["-c", "-k", "--sequesterRsrc", "--keepParent", source.path, destination.path]
@@ -264,6 +276,7 @@ private enum FeedbackBundle {
                 NSLocalizedDescriptionKey: "ditto exited with status \(process.terminationStatus)"
             ])
         }
+        #endif
     }
 }
 

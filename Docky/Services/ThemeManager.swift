@@ -276,6 +276,14 @@ import Observation
     }
 
     private static func extractZip(at zipURL: URL, into destination: URL) throws {
+        #if APP_STORE_SANDBOX
+        // The sandbox blocks `Process` launches of /usr/bin/* binaries.
+        // Theme zip import is disabled in the MAS build until we drop
+        // a Swift unzip implementation (ZIPFoundation SPM dep) in to
+        // replace the ditto invocation. Bundled themes still work
+        // (they're copied by the build phase, no runtime unzip).
+        throw ThemeImportError.extractionFailed(status: -1, stderr: "Theme zip import is unavailable in the App Store build")
+        #else
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
         process.arguments = ["-xk", zipURL.path, destination.path]
@@ -291,6 +299,7 @@ import Observation
             ) ?? ""
             throw ThemeImportError.extractionFailed(status: process.terminationStatus, stderr: stderr)
         }
+        #endif
     }
 
     private static func locateBundleRoot(in directory: URL) throws -> URL {
@@ -510,6 +519,11 @@ import Observation
     }
 
     private static func createZip(of sourceDirectory: URL, at destination: URL) throws {
+        #if APP_STORE_SANDBOX
+        // Same sandbox restriction as `extractZip`. Theme export is
+        // disabled in the MAS build until ZIPFoundation is wired up.
+        throw ThemeExportError.archiveFailed(status: -1, stderr: "Theme export is unavailable in the App Store build")
+        #else
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
         process.arguments = [
@@ -529,6 +543,7 @@ import Observation
             ) ?? ""
             throw ThemeExportError.archiveFailed(status: process.terminationStatus, stderr: stderr)
         }
+        #endif
     }
 
     // MARK: - Internals

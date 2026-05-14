@@ -117,13 +117,20 @@ final class SystemDockVisibilityService {
     }
 
     private func applyHiddenValues() {
+        #if !APP_STORE_SANDBOX
+        // Sandboxed apps cannot write to another app's prefs domain
+        // (`com.apple.dock`). The MAS build's "Hide system Dock"
+        // toggle is hidden in Settings entirely; if this is reached
+        // somehow it's a silent no-op.
         for (key, value) in Self.hiddenValues {
             CFPreferencesSetAppValue(key as CFString, value, Self.dockDomain)
         }
         CFPreferencesAppSynchronize(Self.dockDomain)
+        #endif
     }
 
     private func applySnapshot(_ snapshot: [String: Any]) {
+        #if !APP_STORE_SANDBOX
         for key in Self.managedKeys {
             let stored = snapshot[key]
             if let marker = stored as? String, marker == Self.snapshotNullMarker {
@@ -135,12 +142,18 @@ final class SystemDockVisibilityService {
             }
         }
         CFPreferencesAppSynchronize(Self.dockDomain)
+        #endif
     }
 
     private func restartDock() {
+        #if !APP_STORE_SANDBOX
+        // `forceTerminate` on another bundle is blocked by the
+        // sandbox, and Apple rejects MAS apps that try to kill
+        // system processes regardless. MAS path skips this entirely.
         NSRunningApplication
             .runningApplications(withBundleIdentifier: "com.apple.dock")
             .forEach { $0.forceTerminate() }
+        #endif
     }
 
     private var stateFileURL: URL? {
