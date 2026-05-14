@@ -1,0 +1,43 @@
+//
+//  Docky.AppStore.xcconfig
+//  Docky
+//
+//  Apply this to the App Store target's Debug + Release configurations.
+//  Wires `APP_STORE_SANDBOX` into both Swift and Objective-C compilation
+//  so every `#if APP_STORE_SANDBOX` gate flips active.
+//
+//  Setup (one-time, in Xcode):
+//    1. Project navigator → Project (not target) → Info → Configurations
+//       → "+", create "Debug (App Store)" and "Release (App Store)".
+//    2. For both new configurations, set Based on Configuration File to
+//       this xcconfig (under the Docky (App Store) target column).
+//    3. Duplicate the Docky scheme as "Docky (App Store)" and point its
+//       Run / Archive actions at the new configurations.
+//
+//  Anything not overridden here inherits from the existing
+//  project-level settings, so we don't accidentally drift.
+//
+
+// Compilation conditions
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) APP_STORE_SANDBOX
+
+// Sandbox + entitlements
+CODE_SIGN_ENTITLEMENTS = Docky/Docky.AppStore.entitlements
+ENABLE_APP_SANDBOX = YES
+ENABLE_HARDENED_RUNTIME = YES
+
+// Distinct bundle id so MAS and Developer ID builds can coexist on
+// the same Mac during testing without colliding for UserDefaults,
+// LaunchAgent registrations, or App Group containers.
+PRODUCT_BUNDLE_IDENTIFIER = gt.quintero.Docky.appstore
+
+// Distinct product name so the .app on disk is recognizable.
+PRODUCT_NAME = Docky
+
+// Strip embedded Perl + MediaRemoteAdapter framework from the MAS
+// bundle. Both are gated behind APP_STORE_SANDBOX at the call site
+// (see MediaPlaybackService), but Apple's binary scanner also
+// rejects mere *presence* of files referencing private frameworks.
+// EXCLUDED_SOURCE_FILE_NAMES is honored by Copy Resources and Copy
+// Bundle Resources build phases.
+EXCLUDED_SOURCE_FILE_NAMES = $(inherited) mediaremote-adapter.pl MediaRemoteAdapter.framework

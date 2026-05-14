@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+        Entitlements for the App Store / sandboxed target.
+
+        Bound to `APP_STORE_SANDBOX` Swift compilation condition,
+        which is set in `Docky.AppStore.xcconfig`. Wiring this up:
+            1. Duplicate the Docky target as "Docky (App Store)" in
+               Xcode.
+            2. Set its CODE_SIGN_ENTITLEMENTS to this file.
+            3. Apply Docky.AppStore.xcconfig to the new target's
+               Debug + Release configurations.
+            4. Verify SWIFT_ACTIVE_COMPILATION_CONDITIONS includes
+               `APP_STORE_SANDBOX` (the xcconfig sets it).
+
+        The Developer ID target keeps using its existing
+        (entitlement-less) signing path and never compiles with
+        `APP_STORE_SANDBOX`, so its binary still contains every
+        private API call site we have today.
+    -->
+
+    <!-- Core sandbox -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+
+    <!--
+        Outbound HTTP only — Sparkle update checks, Sentry, Gumroad
+        license verification, getdocky.com trial extension, Weather
+        widget. No incoming sockets.
+    -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!--
+        User-selected files. Required for:
+        - NSOpenPanel during theme attachment in feedback flow.
+        - Adding pinned applications (`NSOpenPanel` returns a URL
+          to a .app bundle that Docky bookmarks).
+        - Folder tiles (user picks a folder, Docky persists a
+          security-scoped bookmark and enumerates it on demand).
+    -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
+
+    <!--
+        Read-only access to the user's Downloads / Pictures /
+        Movies folders for attachment selection in the feedback
+        flow. Image / movie panels won't surface entries from
+        these locations without the entitlement.
+    -->
+    <key>com.apple.security.files.downloads.read-only</key>
+    <true/>
+    <key>com.apple.security.assets.pictures.read-only</key>
+    <true/>
+    <key>com.apple.security.assets.movies.read-only</key>
+    <true/>
+
+    <!--
+        Launch at login. SMAppService manages a LaunchAgent inside
+        the .app bundle.
+    -->
+
+    <!--
+        Personal information frames for the widgets that need them.
+        Each one prompts the user on first request.
+    -->
+    <key>com.apple.security.personal-information.calendars</key>
+    <true/>
+    <key>com.apple.security.personal-information.reminders</key>
+    <true/>
+    <key>com.apple.security.personal-information.location</key>
+    <true/>
+
+    <!--
+        Apple Events to specific media-player bundles. The
+        AppleScriptService still uses this for the legacy fallback
+        path (track metadata via 'tell application "Music"').
+        Future revisions may scope tighter or remove if the helper
+        bridge replaces it.
+
+        NOTE: Apple has been narrowing approvals for
+        `temporary-exception` entitlements. Be ready to justify
+        each bundle id in App Review notes. Drop any we can't
+        justify before submission.
+    -->
+    <key>com.apple.security.temporary-exception.apple-events</key>
+    <array>
+        <string>com.apple.Music</string>
+        <string>com.spotify.client</string>
+    </array>
+
+    <!--
+        XPC connection to the side-loaded Docky Helper. Mach
+        service name matches HelperBridge.machServiceName.
+        Without this, NSXPCConnection to the helper fails silently
+        and `HelperBridge.isAvailable` stays false (which is the
+        correct degraded behavior, but means the helper does
+        nothing).
+    -->
+    <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
+    <array>
+        <string>gt.quintero.Docky.Helper</string>
+    </array>
+
+    <!--
+        Shared App Group with the helper. Gives both bundles a
+        common container for the LaunchAgent plist, the protocol
+        version handshake, and helper-emitted logs.
+
+        IMPORTANT: register this group identifier in App Store
+        Connect first, then add the same string to the helper
+        target's entitlements.
+    -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>$(TeamIdentifierPrefix)gt.quintero.Docky.shared</string>
+    </array>
+</dict>
+</plist>
