@@ -443,6 +443,20 @@ struct BehaviorSettingsView: View {
     @ViewBuilder
     private var systemDockSection: some View {
         Section {
+            #if APP_STORE_SANDBOX
+            // Sandbox cannot write to `com.apple.dock` or terminate
+            // the system Dock. Section is replaced with a clear note
+            // rather than just hiding it, so MAS users understand
+            // why a feature they may have read about isn't here.
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Hide System Dock")
+                    .font(.headline)
+                Text("Not available in the App Store build. Hiding the system Dock requires Developer ID privileges Docky doesn't have in the sandbox. The Developer ID version on getdocky.com includes this feature.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 4)
+            #else
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("Hide System Dock", isOn: $preferences.hidesSystemDock)
                     .font(.headline)
@@ -457,6 +471,7 @@ struct BehaviorSettingsView: View {
                 .disabled(!preferences.hidesSystemDock)
             }
             .padding(.vertical, 4)
+            #endif
         }
     }
 

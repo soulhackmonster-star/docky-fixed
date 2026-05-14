@@ -21,6 +21,11 @@ struct WidgetRegistration: Equatable, Identifiable {
     let defaultSpan: TileSpan
     let includesInPalette: Bool
     let includesInSmartStack: Bool
+    /// When `true` the widget depends on Docky Helper (private APIs).
+    /// Hidden from the palette + smart stack on builds where the
+    /// helper isn't available (currently the MAS / sandboxed build
+    /// before the side-loaded helper arrives).
+    var requiresHelper: Bool = false
 
     var id: String {
         "\(ownerBundleIdentifier):\(kind.rawValue)"
@@ -91,7 +96,10 @@ enum WidgetCatalog {
         ownerBundleIdentifier: WidgetOwnerBundleIdentifiers.genericNowPlaying,
         defaultSpan: .three,
         includesInPalette: true,
-        includesInSmartStack: false
+        includesInSmartStack: false,
+        // Needs MediaRemote (private). Hidden in sandbox builds
+        // until the helper bridge can vend its snapshots.
+        requiresHelper: true
     )
 
     static let search = WidgetRegistration(
@@ -116,8 +124,27 @@ enum WidgetCatalog {
         search,
     ]
 
-    static let paletteRegistrations: [WidgetRegistration] = staticRegistrations.filter(\.includesInPalette)
-    static let smartStackRegistrations: [WidgetRegistration] = staticRegistrations.filter(\.includesInSmartStack)
+    /// Widgets the dock editor palette surfaces. Dynamic so a future
+    /// helper status change (helper installed / removed at runtime)
+    /// updates the available palette immediately. Helper-required
+    /// widgets stay hidden until `HelperBridge.shared.isAvailable`
+    /// flips true, ensuring the MAS build never offers a widget it
+    /// can't fulfill.
+    @MainActor
+    static var paletteRegistrations: [WidgetRegistration] {
+        let helperAvailable = HelperBridge.shared.isAvailable
+        return staticRegistrations.filter {
+            $0.includesInPalette && (!$0.requiresHelper || helperAvailable)
+        }
+    }
+
+    @MainActor
+    static var smartStackRegistrations: [WidgetRegistration] {
+        let helperAvailable = HelperBridge.shared.isAvailable
+        return staticRegistrations.filter {
+            $0.includesInSmartStack && (!$0.requiresHelper || helperAvailable)
+        }
+    }
 
     /// Owner bundle identifiers that are *visible* in a freshly-inserted
     /// smart stack by default. Anything in `smartStackRegistrations`

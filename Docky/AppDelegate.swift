@@ -593,6 +593,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private func relaunchApp() {
+        #if APP_STORE_SANDBOX
+        // Sandbox blocks `Process` launches of /usr/bin/* binaries.
+        // The MAS build's "switch debug OS version" affordance just
+        // terminates and lets the user re-open Docky themselves.
+        NSApp.terminate(nil)
+        #else
         let bundlePath = Bundle.main.bundlePath
         let task = Process()
         task.launchPath = "/usr/bin/open"
@@ -604,6 +610,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         NSApp.terminate(nil)
+        #endif
     }
 
     private static func formatOSVersion(_ version: OperatingSystemVersion) -> String {

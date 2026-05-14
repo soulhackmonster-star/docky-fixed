@@ -144,9 +144,16 @@ private struct DockEditorGalleryItem: Equatable, Identifiable {
         return searchIndex.contains(normalizedSearchText)
     }
 
-    nonisolated static let allItems: [DockEditorGalleryItem] = WidgetCatalog.paletteRegistrations.map(Self.makeWidgetItem)
-        + [makeSmartStackItem()]
-        + [makeUtilityItem(.launchpad), makeUtilityItem(.spacer), makeUtilityItem(.flexibleSpacer), makeUtilityItem(.divider)]
+    /// Dynamic so the palette reflects live `HelperBridge` availability
+    /// (the Now Playing widget appears only when the side-loaded
+    /// helper is reachable; same gating shape we'll apply to other
+    /// helper-required widgets as they're added).
+    @MainActor
+    static var allItems: [DockEditorGalleryItem] {
+        WidgetCatalog.paletteRegistrations.map(Self.makeWidgetItem)
+            + [makeSmartStackItem()]
+            + [makeUtilityItem(.launchpad), makeUtilityItem(.spacer), makeUtilityItem(.flexibleSpacer), makeUtilityItem(.divider)]
+    }
 
     nonisolated private static func makeWidgetItem(registration: WidgetRegistration) -> Self {
         let paletteItem = DockEditPaletteItem.widget(
