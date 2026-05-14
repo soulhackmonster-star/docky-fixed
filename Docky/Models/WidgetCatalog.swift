@@ -161,8 +161,15 @@ enum WidgetCatalog {
     /// `defaultVisibleSmartStackOwnerBundleIdentifiers` — formatted as
     /// the `hiddenWidgetOwnerBundleIdentifiers` argument the
     /// persistence layer expects when creating a new smart stack item.
+    /// Reads `staticRegistrations` directly (rather than
+    /// `smartStackRegistrations`, which is `@MainActor` because it
+    /// gates on `HelperBridge`) so this static let can initialize in
+    /// any context. The helper-required filter doesn't matter here
+    /// because the goal is the hidden-by-default set, and a Now-Playing
+    /// widget that's helper-gated stays hidden regardless.
     static let defaultHiddenSmartStackOwnerBundleIdentifiers: [String] =
-        smartStackRegistrations
+        staticRegistrations
+            .filter(\.includesInSmartStack)
             .map(\.ownerBundleIdentifier)
             .filter { !defaultVisibleSmartStackOwnerBundleIdentifiers.contains($0) }
 }

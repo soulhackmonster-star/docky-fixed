@@ -50,22 +50,31 @@ if new_target.nil?
     :swift
   )
 
-  # Mirror source build phases (files only; build settings come from
-  # the xcconfig). Build phase types we care about: Sources, Resources,
-  # Frameworks, Copy Bundled Themes (a shell-script phase).
-  source_target.source_build_phase.files.each do |build_file|
-    next unless build_file.file_ref
-    new_target.add_file_references([build_file.file_ref])
-  end
-
-  source_target.resources_build_phase.files.each do |build_file|
-    next unless build_file.file_ref
-    new_target.resources_build_phase.add_file_reference(build_file.file_ref, true)
+  # The Docky source target uses Xcode 16's file-system-synchronized
+  # root group (the `Docky/` folder is auto-mirrored as the source
+  # tree), so individual file references don't live in build phases.
+  # Mirror that wiring by attaching the same synchronized root group
+  # to the MAS target: Xcode will pick up all .swift files in `Docky/`
+  # for both targets.
+  source_target.file_system_synchronized_groups.each do |group|
+    unless new_target.file_system_synchronized_groups.include?(group)
+      new_target.file_system_synchronized_groups << group
+    end
   end
 
   source_target.frameworks_build_phase.files.each do |build_file|
     next unless build_file.file_ref
     new_target.frameworks_build_phase.add_file_reference(build_file.file_ref, true)
+  end
+
+  # Mirror Swift package product dependencies (Sparkle, Sentry).
+  # Without these the MAS target won't link.
+  source_target.package_product_dependencies.each do |dep|
+    new_target.package_product_dependencies << dep
+    # Also add to frameworks build phase so the linker sees it.
+    build_file = project.new(Xcodeproj::Project::Object::PBXBuildFile)
+    build_file.product_ref = dep
+    new_target.frameworks_build_phase.files << build_file
   end
 
   # Copy any shell-script run phases (e.g. "Copy Bundled Themes")
@@ -114,19 +123,38 @@ new_target.build_configurations.each do |config|
   # target uses generated Info.plist with INFOPLIST_KEY_* overrides).
   source_release = source_target.build_configurations.find { |c| c.name == 'Release' }
   if source_release
+    # Mirror every settings key that materially affects compilation
+    # or signing from the source target. Anything we miss either
+    # silently breaks (concurrency, Info.plist keys) or fails to
+    # link (framework search paths, asset catalog names).
     ['INFOPLIST_FILE', 'GENERATE_INFOPLIST_FILE',
      'INFOPLIST_KEY_NSHumanReadableCopyright',
      'INFOPLIST_KEY_LSApplicationCategoryType',
      'INFOPLIST_KEY_LSUIElement',
      'INFOPLIST_KEY_NSPrincipalClass',
+     'INFOPLIST_KEY_NSMainNibFile',
+     'INFOPLIST_KEY_NSAppleEventsUsageDescription',
+     'INFOPLIST_KEY_NSCalendarsUsageDescription',
+     'INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription',
+     'INFOPLIST_KEY_NSRemindersUsageDescription',
+     'INFOPLIST_KEY_NSRemindersFullAccessUsageDescription',
+     'INFOPLIST_KEY_NSLocationWhenInUseUsageDescription',
      'MACOSX_DEPLOYMENT_TARGET',
      'MARKETING_VERSION',
      'CURRENT_PROJECT_VERSION',
-     'CODE_SIGN_STYLE',
      'DEVELOPMENT_TEAM',
      'SWIFT_VERSION',
+     'SWIFT_DEFAULT_ACTOR_ISOLATION',
+     'SWIFT_APPROACHABLE_CONCURRENCY',
+     'SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY',
+     'SWIFT_STRICT_CONCURRENCY',
+     'SWIFT_EMIT_LOC_STRINGS',
+     'STRING_CATALOG_GENERATE_SYMBOLS',
      'ASSETCATALOG_COMPILER_APPICON_NAME',
-     'ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME'].each do |key|
+     'ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME',
+     'FRAMEWORK_SEARCH_PATHS',
+     'DEBUG_INFORMATION_FORMAT',
+     'REGISTER_APP_GROUPS'].each do |key|
       value = source_release.build_settings[key]
       config.build_settings[key] = value unless value.nil?
     end
