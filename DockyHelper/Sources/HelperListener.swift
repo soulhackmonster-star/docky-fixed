@@ -69,7 +69,7 @@ final class HelperListener: NSObject, NSXPCListenerDelegate {
         // pins to the team-id anchor.
         let requirementString = """
         identifier "gt.quintero.Docky" or identifier "gt.quintero.Docky.appstore" \
-        and anchor apple generic and certificate leaf[subject.OU] = "<TEAM_ID_PLACEHOLDER>"
+        and anchor apple generic and certificate leaf[subject.OU] = "2KC3797KP9"
         """
 
         var requirement: SecRequirement?

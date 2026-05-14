@@ -67,28 +67,59 @@ final class HelperBridge: ObservableObject {
     /// entitlement (or in the App Group scope when we move to that).
     static let machServiceName = "gt.quintero.Docky.Helper"
 
+    private var connection: NSXPCConnection?
+
     private init() {
         // Intentionally no connect-on-launch. `startIfNeeded()` is
-        // called once at app start from `AppDelegate` (added in a
-        // follow-up commit) so the bridge state is wired up before
-        // any view reads `isAvailable`.
+        // called once at app start from `AppDelegate` so the bridge
+        // state is wired up before any view reads `isAvailable`.
     }
 
     /// Public entry point. Idempotent. Tries to reach the helper;
-    /// flips `isAvailable` to match the result. Future commits add
-    /// the real `NSXPCConnection` here, today it's a stub so callers
-    /// can already be wired against the API.
+    /// flips `isAvailable` to match the protocol-handshake result.
+    /// Safe to call from any actor context but mutations happen on
+    /// the main actor.
     func startIfNeeded() {
-        // Phase 0: no helper exists yet. Stay unavailable so every
-        // gated feature stays hidden. The day the helper ships, this
-        // method becomes the real NSXPCConnection + ping handshake.
-        isAvailable = false
+        guard connection == nil else { return }
+
+        let conn = NSXPCConnection(machServiceName: Self.machServiceName, options: [])
+        conn.remoteObjectInterface = NSXPCInterface(with: DockyHelperProtocol.self)
+        conn.invalidationHandler = { [weak self] in
+            Task { @MainActor in self?.handleInvalidation() }
+        }
+        conn.interruptionHandler = { [weak self] in
+            Task { @MainActor in self?.handleInvalidation() }
+        }
+        conn.resume()
+        connection = conn
+
+        let proxy = conn.remoteObjectProxyWithErrorHandler { [weak self] _ in
+            Task { @MainActor in self?.handleInvalidation() }
+        } as? DockyHelperProtocol
+
+        proxy?.ping { [weak self] reply in
+            // Reply form: "pong:vN". Bridge stays unavailable if
+            // the version differs from what this bundle was built
+            // against (protocol mismatch is a degrade, not a crash).
+            let expected = "pong:v\(Self.expectedProtocolVersion)"
+            let matches = reply == expected
+            Task { @MainActor in
+                self?.isAvailable = matches
+            }
+        }
     }
 
     /// Drops any active connection and reports unavailable. Called on
     /// app termination and when the helper invalidates the connection
     /// (e.g. user removed the helper while Docky was running).
     func teardown() {
+        connection?.invalidate()
+        connection = nil
+        isAvailable = false
+    }
+
+    private func handleInvalidation() {
+        connection = nil
         isAvailable = false
     }
 }

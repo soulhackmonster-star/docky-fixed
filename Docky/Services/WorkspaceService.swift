@@ -521,11 +521,20 @@ final class WorkspaceService: ObservableObject {
             return
         }
 
+        #if APP_STORE_SANDBOX
+        // `terminate` / `forceTerminate` on other apps return false
+        // from the sandbox. We could attempt anyway, but routing
+        // through the helper is the only path that actually works,
+        // and that's added once the helper bridge has a quit method.
+        _ = runningApp
+        _ = force
+        #else
         if force {
             runningApp.forceTerminate()
         } else {
             runningApp.terminate()
         }
+        #endif
     }
 
     func refresh() {

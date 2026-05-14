@@ -139,9 +139,14 @@ final class DockEditorService {
     }
 
     private func restartDock() {
+        #if !APP_STORE_SANDBOX
+        // Sandbox cannot terminate other apps' processes. The MAS
+        // build silently skips the restart, the system Dock keeps
+        // running with whatever state it currently has.
         NSRunningApplication
             .runningApplications(withBundleIdentifier: Self.dockBundleIdentifier)
             .forEach { $0.forceTerminate() }
+        #endif
     }
 
     private func pinnedAppBundleIdentifier(in entry: [String: Any]) -> String? {
