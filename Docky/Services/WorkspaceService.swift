@@ -720,7 +720,15 @@ final class WorkspaceService: ObservableObject {
     }
 
     private func refreshAppWindowPreviews(for windows: [AppWindow]) {
-        guard PermissionsService.shared.screenCapture == .granted else {
+        // App-window preview thumbnails are only consumed by Pro
+        // features (`WindowSwitcherService`, `WindowPreviewService`),
+        // both of which already gate reads on
+        // `ProductService.isUnlocked(.windowSwitcher)`. Skipping the
+        // capture on the producer side keeps free users out of the
+        // screen-capture path entirely — saving CPU/GPU and avoiding
+        // private-API code paths they can't even surface.
+        guard ProductService.shared.isUnlocked(.windowSwitcher),
+              PermissionsService.shared.screenCapture == .granted else {
             if !appWindowPreviews.isEmpty {
                 appWindowPreviews = [:]
             }

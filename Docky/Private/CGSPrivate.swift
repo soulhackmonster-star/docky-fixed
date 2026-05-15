@@ -37,13 +37,43 @@ func CGSSetWindowBackgroundBlurRadius(
     _ radius: Int
 ) -> Int32
 
+// `CGWindowListCreateImage` follows the CoreFoundation Create Rule:
+// the caller owns the returned reference (+1). Importing it via the
+// public CoreGraphics header lets the clang `cf_returns_retained`
+// audit balance ARC for us, but `@_silgen_name` bypasses that audit
+// and Swift treats the return value as +0. The system still holds
+// its +1, ARC emits an extra release at scope exit, and on Sequoia
+// the freed slot gets reused fast enough that the next access
+// SEGVs in `objc_release` (see the Sentry crash with
+// `WorkspaceService.captureAppWindowPreview` at the top of the
+// stack, with `rdi` holding a `Double`-shaped value reused from
+// freed CGImage storage).
+//
+// Declaring the raw binding as `Unmanaged<CGImage>?` opts out of
+// implicit ARC and lets us consume the +1 explicitly via
+// `takeRetainedValue()` in the wrapper below. All five callers in
+// `WorkspaceService.swift` keep working with a managed `CGImage?`.
 @_silgen_name("CGWindowListCreateImage")
+private func _CGWindowListCreateImagePrivate(
+    _ screenBounds: CGRect,
+    _ listOption: CGWindowListOption,
+    _ windowID: CGWindowID,
+    _ imageOption: CGWindowImageOption
+) -> Unmanaged<CGImage>?
+
 func CGWindowListCreateImagePrivate(
     _ screenBounds: CGRect,
     _ listOption: CGWindowListOption,
     _ windowID: CGWindowID,
     _ imageOption: CGWindowImageOption
-) -> CGImage?
+) -> CGImage? {
+    _CGWindowListCreateImagePrivate(
+        screenBounds,
+        listOption,
+        windowID,
+        imageOption
+    )?.takeRetainedValue()
+}
 
 @_silgen_name("CGSGetWindowAlpha")
 func CGSGetWindowAlpha(
