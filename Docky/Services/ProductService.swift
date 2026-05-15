@@ -332,15 +332,28 @@ final class ProductService: ObservableObject {
         self.trialEmail = defaults.string(forKey: Keys.trialEmail) ?? ""
         self.trialExpiresAt = defaults.object(forKey: Keys.trialExpiresAt) as? Date
         defaults.removeObject(forKey: Keys.legacyRegisteredEmail)
+
+        // Migration: a user who started a trial and later purchased
+        // a license kept both pieces of state on disk: a license key
+        // in Keychain *and* a trial identity in Keychain + trial
+        // expiry in UserDefaults. On launch the trial revalidation
+        // would race the license revalidation and could downgrade
+        // the tier to `.free` for a paying customer. A stored
+        // license is authoritative, so purge the leftover trial
+        // state immediately and never spawn the trial refresh task
+        // for licensed users.
+        if hasStoredLicenseKey {
+            Self.deleteTrialIdentity()
+            clearTrial()
+        }
+
         refreshRegistrationStatus()
 
         if hasStoredLicenseKey {
             verificationTask = Task { [weak self] in
                 await self?.revalidateStoredRegistration()
             }
-        }
-
-        if Self.readTrialIdentity() != nil {
+        } else if Self.readTrialIdentity() != nil {
             trialRefreshTask = Task { [weak self] in
                 await self?.revalidateTrialEntitlement()
                 await self?.runTrialRefreshLoop()
@@ -476,6 +489,14 @@ final class ProductService: ObservableObject {
     }
 
     private func revalidateTrialEntitlement() async {
+        // A stored license is authoritative — a paying customer
+        // shouldn't be subject to trial expiry. Belt-and-suspenders
+        // alongside the init-time migration and the
+        // `verifyManualRegistration` cleanup.
+        guard !hasStoredLicenseKey else {
+            return
+        }
+
         guard let identity = Self.readTrialIdentity() else {
             return
         }
@@ -511,7 +532,15 @@ final class ProductService: ObservableObject {
         trialExpiresAt = expiresAt
         defaults.set(response.email, forKey: Keys.trialEmail)
         defaults.set(expiresAt, forKey: Keys.trialExpiresAt)
-        currentTier = response.status == "active" && expiresAt > Date() ? .pro : .free
+
+        // Trial state must never override a stored license. The
+        // upstream callers (`revalidateTrialEntitlement`,
+        // `startTrialRequest`) already gate on `hasStoredLicenseKey`
+        // in practice, but writing the tier here is defensive in
+        // case a new entry point gets added later.
+        if !hasStoredLicenseKey {
+            currentTier = response.status == "active" && expiresAt > Date() ? .pro : .free
+        }
         refreshRegistrationStatus()
     }
 
@@ -531,6 +560,12 @@ final class ProductService: ObservableObject {
             do {
                 try await Task.sleep(nanoseconds: Self.trialRefreshIntervalNanoseconds)
             } catch {
+                return
+            }
+
+            // If the user registered a license between iterations,
+            // stop polling — trial state no longer drives the tier.
+            if hasStoredLicenseKey {
                 return
             }
 
@@ -558,6 +593,17 @@ final class ProductService: ObservableObject {
             }
 
             hasStoredLicenseKey = true
+
+            // Once a license is stored, trial state should no longer
+            // influence the tier. Cancel any in-flight trial work,
+            // delete the keychain trial identity, and clear the
+            // trial UserDefaults so subsequent launches don't kick
+            // the trial revalidation path at all.
+            trialTask?.cancel()
+            trialRefreshTask?.cancel()
+            Self.deleteTrialIdentity()
+            clearTrial()
+
             currentTier = .pro
             refreshRegistrationStatus()
         } catch let error as LicenseVerificationError {
@@ -816,6 +862,10 @@ final class ProductService: ObservableObject {
 
     private static func deleteLicenseKey() {
         SecItemDelete(keychainQuery(account: Keys.keychainAccount) as CFDictionary)
+    }
+
+    private static func deleteTrialIdentity() {
+        SecItemDelete(keychainQuery(account: Keys.trialIdentityAccount) as CFDictionary)
     }
 
     private func clearTrial() {
