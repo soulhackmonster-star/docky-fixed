@@ -23,6 +23,7 @@ final class TileStore: ObservableObject {
 
     private static let changeNotification = Notification.Name("com.apple.dock.prefchanged")
     private static let hasImportedSystemDockPreferencesKey = "docky.tileStore.hasImportedSystemDockPreferences"
+    private static let expandedInlineAppFolderIDsKey = "docky.tileStore.expandedInlineAppFolderIDs"
     private static let demoDebugPinnedAppNames = [
         "Dia",
         "Notes",
@@ -42,7 +43,12 @@ final class TileStore: ObservableObject {
     private var systemOtherTilesByID: [String: Tile] = [:]
     private var trailingTiles: [Tile] = []
     private var dockPinnedTilesByBundleIdentifier: [String: Tile] = [:]
-    private var expandedInlineAppFolderIDs: Set<String> = []
+    private var expandedInlineAppFolderIDs: Set<String> = [] {
+        didSet {
+            guard expandedInlineAppFolderIDs != oldValue else { return }
+            defaults.set(Array(expandedInlineAppFolderIDs), forKey: Self.expandedInlineAppFolderIDsKey)
+        }
+    }
     /// Currently displayed unpinned running apps, in visual order. May contain
     /// one "ghost" entry at the end, an app that recently exited but sat at
     /// the rightmost position, preserved until something newer takes its slot.
@@ -55,6 +61,9 @@ final class TileStore: ObservableObject {
     private let defaults = UserDefaults.standard
 
     private init() {
+        if let storedExpandedIDs = defaults.stringArray(forKey: Self.expandedInlineAppFolderIDsKey) {
+            expandedInlineAppFolderIDs = Set(storedExpandedIDs)
+        }
         reloadSystemDockState(syncPreferencesFromSystemDock: false)
         notificationObserver = DistributedNotificationCenter.default().addObserver(
             forName: Self.changeNotification,
