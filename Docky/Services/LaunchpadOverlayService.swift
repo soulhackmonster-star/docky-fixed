@@ -399,13 +399,19 @@ final class LaunchpadOverlayService: ObservableObject {
         var fsGroups: [LaunchpadScan.SeedGroup] = []
 
         for directory in applicationDirectories {
+            // Don't pass `.skipsHiddenFiles`: macOS flags Cryptex app
+            // symlinks (e.g. /Applications/Safari.app -> the Cryptexes
+            // volume) as hidden, which would silently drop them. We skip
+            // true dot-prefixed entries by name instead.
             guard let topLevel = try? FileManager.default.contentsOfDirectory(
                 at: directory,
                 includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
+                options: []
             ) else { continue }
 
             for url in topLevel {
+                if url.lastPathComponent.hasPrefix(".") { continue }
+
                 if url.pathExtension == "app" {
                     if let appTile = makeAppTile(from: url),
                        seenBundleIDs.insert(appTile.bundleIdentifier).inserted {
@@ -450,17 +456,21 @@ final class LaunchpadOverlayService: ObservableObject {
         seenBundleIDs: inout Set<String>,
         datesByBundleID: inout [String: LaunchpadAppDates]
     ) -> [AppTile] {
+        // See `scanApplications`: omit `.skipsHiddenFiles` so hidden
+        // Cryptex app symlinks survive; dot-prefixed entries are
+        // filtered by name below.
         guard let enumerator = FileManager.default.enumerator(
             at: folderURL,
             includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            options: [.skipsPackageDescendants]
         ) else {
             return []
         }
 
         var apps: [AppTile] = []
         for case let url as URL in enumerator {
-            guard url.pathExtension == "app",
+            guard !url.lastPathComponent.hasPrefix("."),
+                  url.pathExtension == "app",
                   let app = makeAppTile(from: url),
                   seenBundleIDs.insert(app.bundleIdentifier).inserted else { continue }
             datesByBundleID[app.bundleIdentifier] = appDates(for: url)
