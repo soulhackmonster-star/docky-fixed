@@ -25,10 +25,9 @@ struct TileView: View {
     /// the rendered frame instead of staying at the resting tile size.
     /// `nil` falls back to the shared `DockLayoutService` size.
     let renderedTileSize: CGFloat?
-    @ObservedObject private var dockSettings = DockSettingsService.shared
+    private let dockSettings = DockSettingsService.shared
     @ObservedObject private var layout = DockLayoutService.shared
     @Bindable private var preferences = DockyPreferences.shared
-    @ObservedObject private var product = ProductService.shared
     @ObservedObject private var workspace = WorkspaceService.shared
     @ObservedObject private var mediaPlayback = MediaPlaybackService.shared
     @ObservedObject private var editMode = DockEditModeService.shared
@@ -49,6 +48,7 @@ struct TileView: View {
     @State private var windowPreviewDelayTask: Task<Void, Never>?
     @ObservedObject private var windowPreview = WindowPreviewWindowController.shared
     @ObservedObject private var tilePress = TilePressService.shared
+    @ObservedObject private var dockBadges = DockBadgeService.shared
 
     private static let finderBundleIdentifier = "com.apple.finder"
     private static let folderPopoverRetapGuardInterval: TimeInterval = 0.25
@@ -67,21 +67,17 @@ struct TileView: View {
         self.isAppFolderDropTarget = isAppFolderDropTarget
         self.isTrashDropTarget = isTrashDropTarget
         self.renderedTileSize = renderedTileSize
-        self._dockSettings = ObservedObject(wrappedValue: DockSettingsService.shared)
         self._layout = ObservedObject(wrappedValue: DockLayoutService.shared)
         self._preferences = Bindable(wrappedValue: DockyPreferences.shared)
-        self._product = ObservedObject(wrappedValue: ProductService.shared)
         self._workspace = ObservedObject(wrappedValue: WorkspaceService.shared)
         self._mediaPlayback = ObservedObject(wrappedValue: MediaPlaybackService.shared)
         self._editMode = ObservedObject(wrappedValue: DockEditModeService.shared)
         self._widgetExpansion = ObservedObject(wrappedValue: WidgetExpansionWindowController.shared)
         self._dockDrag = ObservedObject(wrappedValue: DockDragService.shared)
+        self._dockBadges = ObservedObject(wrappedValue: DockBadgeService.shared)
     }
 
     private func contextActions(modifierFlags: NSEvent.ModifierFlags) -> [ContextAction] {
-        if lockedProductFeature != nil {
-            return lockedContextActions()
-        }
 
         if let catalogActions = MenuCatalogService.shared.contextActions(for: tile, modifierFlags: modifierFlags) {
             switch tile.content {
@@ -363,32 +359,6 @@ struct TileView: View {
         }
     }
 
-    private var lockedProductFeature: ProductFeature? {
-        if case .app(let app) = tile.content,
-           let displayedWidget = app.displayedWidget,
-           product.availability(for: displayedWidget.kind.productFeature, context: .existingPlacement) == .lockedExisting {
-            return displayedWidget.kind.productFeature
-        }
-
-        switch tile.content {
-        case .launchpad:
-            let feature = ProductFeature.launchpad
-            return product.availability(for: feature, context: .existingPlacement) == .lockedExisting ? feature : nil
-        case .widget(let widget):
-            let feature = widget.kind.productFeature
-            return product.availability(for: feature, context: .existingPlacement) == .lockedExisting ? feature : nil
-        case .smartStack:
-            let feature = ProductFeature.smartStack
-            return product.availability(for: feature, context: .existingPlacement) == .lockedExisting ? feature : nil
-        case .app, .minimizedWindow, .appFolder, .folder, .spacer, .flexibleSpacer, .divider, .trash, .startMenu:
-            return nil
-        }
-    }
-
-    private var isLockedProductPlacement: Bool {
-        lockedProductFeature != nil
-    }
-
     private var isAppContent: Bool {
         if case .app = tile.content { return true }
         return false
@@ -419,7 +389,7 @@ struct TileView: View {
     }
 
     private var tileBodyOpacity: Double {
-        isLockedProductPlacement ? 0.38 : 1
+        1
     }
 
     /// `brightness(-0.35)` darkens icons in place without thinning them
@@ -428,37 +398,6 @@ struct TileView: View {
     /// "fading away" rather than "being pressed").
     private var pressDarkenAmount: Double {
         pressDarkenSignal ? -0.35 : 0
-    }
-
-    private func lockedContextActions() -> [ContextAction] {
-        var actions: [ContextAction] = [
-            .action(String(localized: "Unlock Docky Pro")) {
-                openProductSettings()
-            }
-        ]
-
-        switch tile.content {
-        case .app(let app) where app.displayedWidget != nil:
-            actions.append(.divider)
-            actions.append(.action(String(localized: "Show App Icon")) {
-                TileStore.shared.removeAppWidgetDisplay(bundleIdentifier: app.bundleIdentifier)
-            })
-        case .launchpad, .startMenu, .widget, .smartStack:
-            if isDockyPinnedTile || isDockyTrailingTile {
-                actions.append(.divider)
-                actions.append(.action(String(localized: "Remove from Dock")) {
-                    removeDockyTile()
-                })
-            }
-        case .app, .minimizedWindow, .appFolder, .folder, .spacer, .flexibleSpacer, .divider, .trash:
-            break
-        }
-
-        return actions
-    }
-
-    private func openProductSettings() {
-        (NSApp.delegate as? AppDelegate)?.showSettingsWindow(nil)
     }
 
     /// Background drawn behind the tile when the cursor is over it.
@@ -550,6 +489,25 @@ struct TileView: View {
         }
     }
 
+    /// Notification badge text to paint over this tile, or `nil` when the
+    /// feature is off or the app has no badge. App folders show the summed
+    /// numeric badge of the apps they contain (mirroring how the count rolls
+    /// up when running apps collapse into a folder).
+    private var badgeText: String? {
+        guard preferences.showsAppBadges else { return nil }
+        switch tile.content {
+        case .app(let app):
+            return dockBadges.badge(forBundleIdentifier: app.bundleIdentifier)
+        case .appFolder(let folder):
+            let total = folder.apps.reduce(0) { sum, app in
+                sum + (dockBadges.badge(forBundleIdentifier: app.bundleIdentifier).flatMap(Int.init) ?? 0)
+            }
+            return total > 0 ? String(total) : nil
+        case .folder, .launchpad, .startMenu, .widget, .smartStack, .spacer, .flexibleSpacer, .divider, .trash, .minimizedWindow:
+            return nil
+        }
+    }
+
     /// Effective drop shadow applied behind the tile's icon content.
     /// Returns `Color.clear` when no shadow color is set, combined
     /// with a 0 radius below, that makes `.shadow(...)` a true no-op.
@@ -592,10 +550,10 @@ struct TileView: View {
                     .padding(runningIndicatorEdge, runningIndicatorInset)
                     .offset(x: runningIndicatorOffsetVector.width, y: runningIndicatorOffsetVector.height)
             }
-            .overlay {
-                if isLockedProductPlacement {
-                    LockedProductTileOverlay()
-                        .allowsHitTesting(false)
+            .overlay(alignment: .topTrailing) {
+                if let badgeText {
+                    DockBadgeView(text: badgeText)
+                        .padding(appliedTileIconPadding)
                 }
             }
             .contentShape(Rectangle())
@@ -794,7 +752,6 @@ struct TileView: View {
 
     private var displayedContent: some View {
         content
-            .allowsHitTesting(!isLockedProductPlacement)
     }
 
     @ViewBuilder
@@ -1437,13 +1394,7 @@ struct TileView: View {
     }
 
     private func handleTap() {
-        Self.logger.info("handleTap tileID=\(tile.id, privacy: .public) contentKind=\(tileContentKindDescription, privacy: .public) locked=\(isLockedProductPlacement, privacy: .public)")
-        if isLockedProductPlacement {
-            isTooltipPresented = false
-            openProductSettings()
-            return
-        }
-
+        Self.logger.info("handleTap tileID=\(tile.id, privacy: .public) contentKind=\(tileContentKindDescription, privacy: .public)")
         // Tap-to-act always supersedes the hover preview.
         windowPreviewDelayTask?.cancel()
         windowPreviewDelayTask = nil
@@ -2335,22 +2286,6 @@ struct TileView: View {
         }
     }
 
-}
-
-private struct LockedProductTileOverlay: View {
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "lock.fill")
-                .font(.callout.weight(.semibold))
-            Text("Pro")
-                .font(.caption.weight(.semibold))
-                .offset(y: 1)
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color.black.opacity(0.62), in: .capsule)
-    }
 }
 
 private struct TileTooltipView: View {

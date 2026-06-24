@@ -26,6 +26,7 @@
 import AppKit
 import ApplicationServices
 import Combine
+import ScreenCaptureKit
 
 private let axWindowNumberAttribute = "AXWindowNumber" as CFString
 private let axCloseAction = "AXClose" as CFString
@@ -140,6 +141,21 @@ final class WindowRegistry: ObservableObject {
         }
     }
 
+    /// Same as `visible` but optionally folds minimized windows back in
+    /// so the switcher / hover preview can present them under a
+    /// "(minimized)" badge. Minimized windows skip the strict
+    /// `isCapturable` test (CGWindowServer often omits bounds for them,
+    /// which would otherwise filter them out) and are kept whenever
+    /// they have a `cgWindowID` to identify them.
+    func switchable(includeMinimized: Bool) -> [AppWindow] {
+        windows.filter { window in
+            if window.isMinimized {
+                return includeMinimized && window.cgWindowID != nil
+            }
+            return isCapturable(window)
+        }
+    }
+
     /// True when a window has a working CGWindowID, the WindowServer
     /// still reports bounds for it, and those bounds are large enough
     /// to be a real content window (>= 100x100). Filters out auxiliary
@@ -184,6 +200,10 @@ final class WindowRegistry: ObservableObject {
     private var workspaceObservers: [NSObjectProtocol] = []
     private var permissionsCancellable: AnyCancellable?
     private var observationsActive = false
+    /// Debounced follow-up task that runs `reconcileWithScreenCapture`
+    /// after a burst of AX updates settles. See
+    /// `scheduleScreenCaptureReconciliation` for details.
+    private var screenCaptureReconciliationTask: Task<Void, Never>?
 
     private init() {
         permissionsCancellable = PermissionsService.shared.$accessibility
@@ -767,16 +787,59 @@ final class WindowRegistry: ObservableObject {
             let id = WindowID(element: element)
             guard !seen.contains(id) else { continue }
             seen.insert(id)
-            if let window = makeAppWindow(
+            guard let window = makeAppWindow(
                 element: element,
                 bundleIdentifier: bundleID,
                 processIdentifier: pid,
                 appDisplayName: displayName
-            ) {
-                result.append(window)
-            }
+            ) else { continue }
+            guard passesAppDiscriminator(window: window, element: element) else { continue }
+            result.append(window)
         }
         return result
+    }
+
+    /// Per-bundle filters that strip AX entries known to be false
+    /// positives for specific apps — menu-bar shadows, scratch popups,
+    /// invisible launcher panels. The whitelist is kept narrow on
+    /// purpose: each rule should be backed by a real, repeatable bug.
+    /// Returns `true` when the candidate looks legit for that app.
+    private func passesAppDiscriminator(window: AppWindow, element: AXUIElement) -> Bool {
+        let trimmedTitle = window.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bundleID = window.bundleIdentifier
+        let frame = window.frame
+
+        // Steam emits AX "windows" for its in-app overlay shadows that
+        // carry no title and dwarf the actual game window. The real
+        // game/library windows always have a title.
+        if bundleID == "com.valvesoftware.steam" {
+            if trimmedTitle.isEmpty || trimmedTitle == window.appDisplayName {
+                return false
+            }
+        }
+
+        // Firefox briefly exposes a thin AX panel under the main window
+        // when popovers open; height is the easiest reliable signal.
+        if bundleID == "org.mozilla.firefox" || bundleID.hasPrefix("org.mozilla.") {
+            if let frame, frame.height < 300 {
+                return false
+            }
+        }
+
+        // JetBrains IDEs back floating helper panels with AX windows
+        // (find-in-files, scratch tool windows). The main editor window
+        // has no AX subrole; helpers carry `AXFloatingWindow` or
+        // `AXSystemFloatingWindow`. Drop those so the switcher only
+        // shows real editor frames.
+        if bundleID.hasPrefix("com.jetbrains.") {
+            if let subrole = stringAttribute(kAXSubroleAttribute as CFString, of: element),
+               subrole == kAXFloatingWindowSubrole as String
+                || subrole == kAXSystemFloatingWindowSubrole as String {
+                return false
+            }
+        }
+
+        return true
     }
 
     private func makeAppWindow(
@@ -790,8 +853,13 @@ final class WindowRegistry: ObservableObject {
         let resolvedTitle = (title?.isEmpty ?? true) ? appDisplayName : (title ?? appDisplayName)
         let isMinimized = boolAttribute(kAXMinimizedAttribute as CFString, of: element) ?? false
         let windowNumber = intAttribute(axWindowNumberAttribute, of: element)
-        let cgWindowID = cgWindowID(of: element)
         let frame = frameAttribute(of: element)
+        let cgWindowID = cgWindowID(
+            of: element,
+            processIdentifier: processIdentifier,
+            title: resolvedTitle,
+            frame: frame
+        )
 
         return AppWindow(
             element: element,
@@ -812,6 +880,73 @@ final class WindowRegistry: ObservableObject {
         next.removeAll { $0.processIdentifier == pid }
         next.insert(contentsOf: updatedWindows, at: min(insertIndex, next.count))
         applyOrdered(next)
+        scheduleScreenCaptureReconciliation()
+    }
+
+    // MARK: - ScreenCaptureKit reconciliation
+
+    /// Debounced follow-up that compares the registry's on-screen windows
+    /// against ScreenCaptureKit's view. When SCK reports more on-screen
+    /// windows for a PID than the registry knows about, we re-enumerate
+    /// AX for that PID — usually catching a window AX hadn't yet
+    /// surfaced, with Phase 1's title/geometry fallback closing the gap
+    /// for AX entries that lack a direct CGWindowID.
+    ///
+    /// The cancel/replace loop coalesces bursts of AX notifications into
+    /// a single SCK round-trip, and the work itself is idempotent: if
+    /// the second AX pass still falls short, we exit silently rather
+    /// than scheduling another retry.
+    private func scheduleScreenCaptureReconciliation() {
+        guard PermissionsService.shared.screenCapture == .granted else { return }
+        screenCaptureReconciliationTask?.cancel()
+        screenCaptureReconciliationTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard let self, !Task.isCancelled else { return }
+            await self.reconcileWithScreenCapture()
+        }
+    }
+
+    @MainActor
+    private func reconcileWithScreenCapture() async {
+        let content: SCShareableContent
+        do {
+            content = try await SCShareableContent.excludingDesktopWindows(
+                false,
+                onScreenWindowsOnly: true
+            )
+        } catch {
+            return
+        }
+
+        var scWindowsByPID: [pid_t: Int] = [:]
+        for window in content.windows {
+            guard let app = window.owningApplication else { continue }
+            scWindowsByPID[pid_t(app.processID), default: 0] += 1
+        }
+
+        var registryOnScreenByPID: [pid_t: Int] = [:]
+        for window in windows where !window.isMinimized {
+            registryOnScreenByPID[window.processIdentifier, default: 0] += 1
+        }
+
+        for (pid, scCount) in scWindowsByPID {
+            let registryCount = registryOnScreenByPID[pid, default: 0]
+            guard scCount > registryCount else { continue }
+            guard let app = NSRunningApplication(processIdentifier: pid),
+                  app.activationPolicy == .regular,
+                  !filteredBundleIdentifiers.contains(app.bundleIdentifier ?? "") else {
+                continue
+            }
+            let refreshed = enumerateWindows(for: app)
+            // Bypass `replaceWindows` to avoid re-arming the reconciler
+            // and looping on a PID whose AX layer truly doesn't expose
+            // the window SCK sees.
+            var next = windows
+            let insertIndex = next.firstIndex(where: { $0.processIdentifier == pid }) ?? next.count
+            next.removeAll { $0.processIdentifier == pid }
+            next.insert(contentsOf: refreshed, at: min(insertIndex, next.count))
+            applyOrdered(next)
+        }
     }
 
     private func removeWindows(for pid: pid_t) {
@@ -947,10 +1082,93 @@ final class WindowRegistry: ObservableObject {
         return (value as? NSNumber)?.intValue
     }
 
-    private func cgWindowID(of element: AXUIElement) -> CGWindowID? {
+    /// Resolves an AX window's CGWindowID. The private `_AXUIElementGetWindow`
+    /// is the fast path. When that fails (Adobe, Electron helpers, some
+    /// JetBrains windows) we walk the WindowServer's window list for the
+    /// owning PID and match heuristically. Three tiers, most-confident
+    /// first, so we never elevate a guess over a known good answer:
+    ///
+    ///  1. Exact title equality.
+    ///  2. Geometry tolerance — same origin and size within 2pt. Catches
+    ///     untitled documents/popovers that the AX layer reports without
+    ///     a name.
+    ///  3. Case-insensitive substring overlap on the title, either
+    ///     direction. Last resort because Chrome's "Page Title - Google
+    ///     Chrome" vs CG's "Page Title" pattern depends on app behavior.
+    ///
+    /// Geometry comparison happens against `frame` (the AX-reported frame)
+    /// so callers must pass the trimmed value, not the raw AX read.
+    private func cgWindowID(
+        of element: AXUIElement,
+        processIdentifier: pid_t,
+        title: String,
+        frame: CGRect?
+    ) -> CGWindowID? {
         var id: CGWindowID = 0
-        guard _AXUIElementGetWindow(element, &id) == .success, id != 0 else { return nil }
-        return id
+        if _AXUIElementGetWindow(element, &id) == .success, id != 0 {
+            return id
+        }
+        return cgWindowIDByHeuristic(
+            processIdentifier: processIdentifier,
+            title: title,
+            frame: frame
+        )
+    }
+
+    private func cgWindowIDByHeuristic(
+        processIdentifier: pid_t,
+        title: String,
+        frame: CGRect?
+    ) -> CGWindowID? {
+        let listOptions: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        let descriptions = CGWindowListCopyWindowInfo(listOptions, kCGNullWindowID) as? [[String: Any]] ?? []
+        let appEntries = descriptions.filter { entry in
+            (entry[kCGWindowOwnerPID as String] as? pid_t) == processIdentifier
+        }
+        guard !appEntries.isEmpty else { return nil }
+
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedTitle.isEmpty,
+           let match = appEntries.first(where: {
+               ($0[kCGWindowName as String] as? String) == trimmedTitle
+           }),
+           let id = match[kCGWindowNumber as String] as? CGWindowID {
+            return id
+        }
+
+        if let frame {
+            for entry in appEntries {
+                guard let boundsDict = entry[kCGWindowBounds as String] as? [String: Any] else { continue }
+                let cgFrame = CGRect(
+                    x: (boundsDict["X"] as? CGFloat) ?? 0,
+                    y: (boundsDict["Y"] as? CGFloat) ?? 0,
+                    width: (boundsDict["Width"] as? CGFloat) ?? 0,
+                    height: (boundsDict["Height"] as? CGFloat) ?? 0
+                )
+                if abs(cgFrame.origin.x - frame.origin.x) < 2,
+                   abs(cgFrame.origin.y - frame.origin.y) < 2,
+                   abs(cgFrame.size.width - frame.size.width) < 2,
+                   abs(cgFrame.size.height - frame.size.height) < 2,
+                   let id = entry[kCGWindowNumber as String] as? CGWindowID {
+                    return id
+                }
+            }
+        }
+
+        if !trimmedTitle.isEmpty {
+            let lowered = trimmedTitle.lowercased()
+            for entry in appEntries {
+                guard let cgTitle = entry[kCGWindowName as String] as? String,
+                      !cgTitle.isEmpty else { continue }
+                let loweredCG = cgTitle.lowercased()
+                if loweredCG.contains(lowered) || lowered.contains(loweredCG),
+                   let id = entry[kCGWindowNumber as String] as? CGWindowID {
+                    return id
+                }
+            }
+        }
+
+        return nil
     }
 
     private func frameAttribute(of element: AXUIElement) -> CGRect? {

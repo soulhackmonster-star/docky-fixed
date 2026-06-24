@@ -41,6 +41,15 @@ enum LaunchpadEntry: Identifiable {
     }
 }
 
+/// Filesystem timestamps for an app bundle, used by the Launchpad
+/// date-sort modes. `created` / `modified` are the bundle's own
+/// creation and content-modification dates (install/update times in
+/// practice).
+struct LaunchpadAppDates {
+    let created: Date
+    let modified: Date
+}
+
 /// Snapshot of the filesystem scan, consumed by the layout pipeline
 /// to seed the initial layout and reconcile installs/removals.
 struct LaunchpadScan {
@@ -50,6 +59,9 @@ struct LaunchpadScan {
     }
 
     let appsByBundleID: [String: AppTile]
+    /// Bundle creation/modification dates captured during the same
+    /// directory walk, so date-sorts don't trigger a second stat pass.
+    let datesByBundleID: [String: LaunchpadAppDates]
     /// `.app` bundles that sat directly under an applications root
     /// (not inside a subdirectory). Used for initial seed only.
     let topLevelApps: [AppTile]
@@ -96,6 +108,9 @@ final class LaunchpadOverlayService: ObservableObject {
 
     @Published private(set) var isPresented = false
     @Published private(set) var entries: [LaunchpadEntry] = []
+    /// Bundle creation/modification dates from the latest scan. Read by
+    /// the overlay view to sort the grid by Date Created / Date Modified.
+    @Published private(set) var appDatesByBundleID: [String: LaunchpadAppDates] = [:]
     /// Wallpaper for the screen the overlay is currently presented on. Driven
     /// by the window controller before the overlay animates in so the view
     /// can render the desktop image as the launchpad's blurred background.
@@ -142,7 +157,7 @@ final class LaunchpadOverlayService: ObservableObject {
     }
 
     func present() {
-        guard ProductService.shared.isUnlocked(.launchpad), DockyPreferences.shared.enablesLaunchpadOverlay else {
+        guard DockyPreferences.shared.enablesLaunchpadOverlay else {
             dismiss()
             return
         }
@@ -278,6 +293,7 @@ final class LaunchpadOverlayService: ObservableObject {
     @MainActor
     private func applyScan(_ scan: LaunchpadScan) {
         appsByBundleID = scan.appsByBundleID
+        appDatesByBundleID = scan.datesByBundleID
 
         let layoutService = LaunchpadLayoutService.shared
 
@@ -378,21 +394,29 @@ final class LaunchpadOverlayService: ObservableObject {
     private static func scanApplications() -> LaunchpadScan {
         var seenBundleIDs = Set<String>()
         var appsByBundleID: [String: AppTile] = [:]
+        var datesByBundleID: [String: LaunchpadAppDates] = [:]
         var topLevelApps: [AppTile] = []
         var fsGroups: [LaunchpadScan.SeedGroup] = []
 
         for directory in applicationDirectories {
+            // Don't pass `.skipsHiddenFiles`: macOS flags Cryptex app
+            // symlinks (e.g. /Applications/Safari.app -> the Cryptexes
+            // volume) as hidden, which would silently drop them. We skip
+            // true dot-prefixed entries by name instead.
             guard let topLevel = try? FileManager.default.contentsOfDirectory(
                 at: directory,
                 includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
+                options: []
             ) else { continue }
 
             for url in topLevel {
+                if url.lastPathComponent.hasPrefix(".") { continue }
+
                 if url.pathExtension == "app" {
                     if let appTile = makeAppTile(from: url),
                        seenBundleIDs.insert(appTile.bundleIdentifier).inserted {
                         appsByBundleID[appTile.bundleIdentifier] = appTile
+                        datesByBundleID[appTile.bundleIdentifier] = appDates(for: url)
                         topLevelApps.append(appTile)
                     }
                     continue
@@ -401,7 +425,11 @@ final class LaunchpadOverlayService: ObservableObject {
                 let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
                 guard isDirectory else { continue }
 
-                let nestedApps = scanSubfolderApps(in: url, seenBundleIDs: &seenBundleIDs)
+                let nestedApps = scanSubfolderApps(
+                    in: url,
+                    seenBundleIDs: &seenBundleIDs,
+                    datesByBundleID: &datesByBundleID
+                )
                 guard !nestedApps.isEmpty else { continue }
 
                 for app in nestedApps {
@@ -417,25 +445,35 @@ final class LaunchpadOverlayService: ObservableObject {
 
         return LaunchpadScan(
             appsByBundleID: appsByBundleID,
+            datesByBundleID: datesByBundleID,
             topLevelApps: topLevelApps,
             fsGroups: fsGroups
         )
     }
 
-    private static func scanSubfolderApps(in folderURL: URL, seenBundleIDs: inout Set<String>) -> [AppTile] {
+    private static func scanSubfolderApps(
+        in folderURL: URL,
+        seenBundleIDs: inout Set<String>,
+        datesByBundleID: inout [String: LaunchpadAppDates]
+    ) -> [AppTile] {
+        // See `scanApplications`: omit `.skipsHiddenFiles` so hidden
+        // Cryptex app symlinks survive; dot-prefixed entries are
+        // filtered by name below.
         guard let enumerator = FileManager.default.enumerator(
             at: folderURL,
             includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            options: [.skipsPackageDescendants]
         ) else {
             return []
         }
 
         var apps: [AppTile] = []
         for case let url as URL in enumerator {
-            guard url.pathExtension == "app",
+            guard !url.lastPathComponent.hasPrefix("."),
+                  url.pathExtension == "app",
                   let app = makeAppTile(from: url),
                   seenBundleIDs.insert(app.bundleIdentifier).inserted else { continue }
+            datesByBundleID[app.bundleIdentifier] = appDates(for: url)
             apps.append(app)
         }
         apps.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
@@ -450,6 +488,18 @@ final class LaunchpadOverlayService: ObservableObject {
         }
         let displayName = FileManager.default.displayName(atPath: url.path)
         return AppTile(bundleIdentifier: bundleIdentifier, displayName: displayName)
+    }
+
+    /// Reads the bundle's creation and content-modification dates. Both
+    /// fall back to `.distantPast` when unavailable so date-sorts keep a
+    /// stable, deterministic position for apps the filesystem won't
+    /// report on.
+    private static func appDates(for url: URL) -> LaunchpadAppDates {
+        let values = try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+        return LaunchpadAppDates(
+            created: values?.creationDate ?? .distantPast,
+            modified: values?.contentModificationDate ?? .distantPast
+        )
     }
 
     deinit {

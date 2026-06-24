@@ -13,10 +13,10 @@ struct MainWindowView: View {
     private let borderWidth: CGFloat = 1
     private let chromeResizeAnimation: Animation = .easeInOut(duration: 0.18)
 
-    @ObservedObject private var dockSettings = DockSettingsService.shared
+    private let dockSettings = DockSettingsService.shared
     @Bindable private var preferences = DockyPreferences.shared
     @ObservedObject private var layoutService = DockLayoutService.shared
-    @ObservedObject private var magnification = DockMagnificationService.shared
+    private let magnification = DockMagnificationService.shared
     @ObservedObject private var chromeMetrics = DockChromeMetricsService.shared
 
     var body: some View {

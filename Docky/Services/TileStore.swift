@@ -358,9 +358,7 @@ final class TileStore: ObservableObject {
             .appendingPathComponent("Downloads", isDirectory: true)
         preferences.pinnedItems = pinnedItems
         var trailingItems: [TrailingTileItem] = []
-        if ProductService.shared.availability(for: .smartStack, context: .newPlacement).allowsNewPlacement {
-            trailingItems.append(.smartStack())
-        }
+        trailingItems.append(.smartStack())
         trailingItems.append(.folder(
             url: downloadsURL,
             displayName: "Downloads",
@@ -383,9 +381,7 @@ final class TileStore: ObservableObject {
         preferences.pinnedItems = pinnedAppBundleIdentifiers.map(PinnedTileItem.app(bundleIdentifier:))
 
         var trailingItems: [TrailingTileItem] = []
-        if ProductService.shared.availability(for: .smartStack, context: .newPlacement).allowsNewPlacement {
-            trailingItems.append(.smartStack())
-        }
+        trailingItems.append(.smartStack())
         trailingItems.append(.folder(
             url: downloadsURL,
             displayName: "Downloads",
@@ -626,6 +622,70 @@ final class TileStore: ObservableObject {
         rebuildTiles()
     }
 
+    /// Moves `movingBundleIdentifier` to the slot currently occupied by
+    /// `targetBundleIdentifier` inside the app folder identified by
+    /// `tileID`. No-op when either id isn't in the folder, when both ids
+    /// are the same, or when the relative order is already correct.
+    func reorderAppsInFolder(
+        tileID: String,
+        movingBundleIdentifier: String,
+        toIndexOfTargetBundleIdentifier targetBundleIdentifier: String
+    ) {
+        guard movingBundleIdentifier != targetBundleIdentifier else { return }
+        guard let itemIndex = preferences.pinnedItems.firstIndex(where: { Self.pinnedTileID(for: $0) == tileID }),
+              preferences.pinnedItems[itemIndex].kind == .appFolder else {
+            return
+        }
+
+        let existingItem = preferences.pinnedItems[itemIndex]
+        let ids = existingItem.folderBundleIdentifiers
+        guard ids.contains(movingBundleIdentifier),
+              let targetIndex = ids.firstIndex(of: targetBundleIdentifier) else {
+            return
+        }
+        reorderAppsInFolder(
+            tileID: tileID,
+            movingBundleIdentifier: movingBundleIdentifier,
+            toIndex: targetIndex
+        )
+    }
+
+    /// Moves `movingBundleIdentifier` to absolute position `targetIndex`
+    /// in the folder's current ordering. `targetIndex` is interpreted in
+    /// the post-removal coordinate space, matching the convention used
+    /// by the launchpad reorder gesture.
+    func reorderAppsInFolder(
+        tileID: String,
+        movingBundleIdentifier: String,
+        toIndex targetIndex: Int
+    ) {
+        guard let itemIndex = preferences.pinnedItems.firstIndex(where: { Self.pinnedTileID(for: $0) == tileID }),
+              preferences.pinnedItems[itemIndex].kind == .appFolder else {
+            return
+        }
+
+        let existingItem = preferences.pinnedItems[itemIndex]
+        var ids = existingItem.folderBundleIdentifiers
+        guard let currentIndex = ids.firstIndex(of: movingBundleIdentifier) else { return }
+
+        ids.remove(at: currentIndex)
+        let clampedTarget = max(0, min(targetIndex, ids.count))
+        ids.insert(movingBundleIdentifier, at: clampedTarget)
+        guard ids != existingItem.folderBundleIdentifiers else { return }
+
+        var pinnedItems = preferences.pinnedItems
+        pinnedItems[itemIndex] = .appFolder(
+            id: existingItem.id,
+            displayName: existingItem.folderDisplayName ?? "Folder",
+            bundleIdentifiers: ids,
+            displayMode: existingItem.appFolderDisplayMode ?? .grid,
+            contentViewMode: existingItem.folderContentViewMode ?? .grid
+        )
+        preferences.pinnedItems = pinnedItems
+        refreshPinnedTilesFromPreferences()
+        rebuildTiles()
+    }
+
     func setAppFolderContentViewMode(tileID: String, mode: FolderTileContentViewMode) {
         guard let itemIndex = preferences.pinnedItems.firstIndex(where: { Self.pinnedTileID(for: $0) == tileID }),
               preferences.pinnedItems[itemIndex].kind == .appFolder else {
@@ -739,10 +799,6 @@ final class TileStore: ObservableObject {
         ownerBundleIdentifier: String,
         span: TileSpan
     ) {
-        guard ProductService.shared.availability(for: kind.productFeature, context: .newPlacement).allowsNewPlacement else {
-            return
-        }
-
         var placements = preferences.widgetPlacements.filter {
             !($0.kind == kind && $0.ownerBundleIdentifier == ownerBundleIdentifier)
         }
@@ -767,19 +823,10 @@ final class TileStore: ObservableObject {
         }
 
         var candidates = WidgetCatalog.staticRegistrations
-            .filter {
-                ProductService.shared.availability(for: $0.kind.productFeature, context: .newPlacement).allowsNewPlacement
-            }
             .filter { $0.ownerBundleIdentifier == bundleIdentifier }
             .map { $0.makeTile() }
 
-        let canPlaceNowPlayingWidget = ProductService.shared.availability(
-            for: WidgetKind.nowPlaying.productFeature,
-            context: .newPlacement
-        ).allowsNewPlacement
-
-        if canPlaceNowPlayingWidget,
-           mediaPlayback.state(for: bundleIdentifier) != nil || appWidgetDisplay(bundleIdentifier: bundleIdentifier)?.kind == .nowPlaying {
+        if mediaPlayback.state(for: bundleIdentifier) != nil || appWidgetDisplay(bundleIdentifier: bundleIdentifier)?.kind == .nowPlaying {
             candidates.append(Self.makeWidgetTile(
                 kind: .nowPlaying,
                 ownerBundleIdentifier: bundleIdentifier,
@@ -796,7 +843,6 @@ final class TileStore: ObservableObject {
 
     func setAppWidgetDisplay(bundleIdentifier: String, kind: WidgetKind) {
         guard !bundleIdentifier.isEmpty,
-              ProductService.shared.availability(for: kind.productFeature, context: .newPlacement).allowsNewPlacement,
               !isAppInFolder(bundleIdentifier: bundleIdentifier) else {
             return
         }
@@ -853,16 +899,10 @@ final class TileStore: ObservableObject {
         case .app, .appFolder, .widget:
             return
         case .launchpad:
-            guard ProductService.shared.availability(for: .launchpad, context: .newPlacement).allowsNewPlacement else {
-                return
-            }
             item = .launchpad()
         case .startMenu:
             item = .startMenu()
         case .smartStack:
-            guard ProductService.shared.availability(for: .smartStack, context: .newPlacement).allowsNewPlacement else {
-                return
-            }
             item = .smartStack()
         case .spacer:
             item = .spacer()
@@ -923,13 +963,6 @@ final class TileStore: ObservableObject {
     }
 
     func insertTrailingItem(_ item: TrailingTileItem, at destinationIndex: Int) {
-        if item.kind == .folder,
-           ProductService.shared.currentTier == .free,
-           preferences.trailingItems.filter({ $0.kind == .folder }).count >= ProductService.maximumFreeFolderCount {
-            NSLog("[Docky] Blocked folder insertion in free tier at folder limit=\(ProductService.maximumFreeFolderCount)")
-            return
-        }
-
         var trailingItems = preferences.trailingItems
         logTrailingItems("Before insertTrailingItem")
         let clampedDestinationIndex = min(max(destinationIndex, 0), trailingItems.count)
@@ -2283,7 +2316,7 @@ final class TileStore: ObservableObject {
             }
         }
 
-        guard ProductService.shared.isUnlocked(.groupedAppFolders), preferences.showsGroupedOpenedAppsInDock else {
+        guard preferences.showsGroupedOpenedAppsInDock else {
             return []
         }
 
@@ -2376,8 +2409,6 @@ final class TileStore: ObservableObject {
     private func allSmartStackWidgets() -> [WidgetTile] {
         let staticWidgets = WidgetCatalog.smartStackRegistrations.map {
             $0.makeTile()
-        }.filter {
-            ProductService.shared.availability(for: $0.kind.productFeature).isUnlocked
         }
 
         let nowPlayingWidgets = mediaPlayback.statesByBundleIdentifier.values
@@ -2389,9 +2420,6 @@ final class TileStore: ObservableObject {
                     ownerBundleIdentifier: state.bundleIdentifier,
                     span: .three
                 )
-            }
-            .filter {
-                ProductService.shared.availability(for: $0.kind.productFeature).isUnlocked
             }
 
         return staticWidgets + nowPlayingWidgets

@@ -44,8 +44,7 @@ final class WindowSwitcherService: ObservableObject {
         // captured image to show behind the switcher, and instant-focus's
         // "see the real window come forward" UX fights with the list overlay.
         // In list mode the list itself is the preview substitute.
-        guard ProductService.shared.isUnlocked(.windowSwitcher),
-              DockyPreferences.shared.showsWindowSwitcherFocusPreview,
+        guard DockyPreferences.shared.showsWindowSwitcherFocusPreview,
               resolvedLayout == .thumbnails else {
             return nil
         }
@@ -88,8 +87,7 @@ final class WindowSwitcherService: ObservableObject {
     }
 
     func handleHotKeyPress(direction: Int) {
-        guard ProductService.shared.isUnlocked(.windowSwitcher),
-              DockyPreferences.shared.enablesWindowSwitcher else {
+        guard DockyPreferences.shared.enablesWindowSwitcher else {
             dismiss()
             return
         }
@@ -109,7 +107,9 @@ final class WindowSwitcherService: ObservableObject {
             return
         }
 
-        let latestWindows = WindowRegistry.shared.visible
+        let latestWindows = WindowRegistry.shared.switchable(
+            includeMinimized: DockyPreferences.shared.includesMinimizedWindows
+        )
 
         windows = latestWindows
         freezeWindowPreviews(for: latestWindows)
@@ -153,9 +153,18 @@ final class WindowSwitcherService: ObservableObject {
         cancelFocusedPreview()
         isPresented = false
         isContextMenuPresented = false
-        windows = []
-        windowPreviews = [:]
         selectedWindowIdentifier = nil
+        // Defer the windows/previews wipe past the overlay's fade-out
+        // (0.18s in WindowSwitcherOverlayWindowController) so the chrome
+        // keeps rendering its last frame and doesn't flash to the
+        // "No windows available" card mid-dismiss. The next show pass
+        // overwrites both arrays anyway, so this only matters as a
+        // visual cushion.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self, !self.isPresented else { return }
+            self.windows = []
+            self.windowPreviews = [:]
+        }
     }
 
     func moveSelection(delta: Int) {
@@ -282,19 +291,6 @@ final class WindowSwitcherService: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.updateGlobalEventMonitors()
-            }
-            .store(in: &cancellables)
-
-        ProductService.shared.$currentTier
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                guard let self else { return }
-
-                self.registerHotKey(shortcut: DockyPreferences.shared.windowSwitcherShortcut)
-                if !ProductService.shared.isUnlocked(.windowSwitcher) {
-                    self.dismiss()
-                    WindowPreviewWindowController.shared.dismissCurrent()
-                }
             }
             .store(in: &cancellables)
     }
@@ -479,7 +475,7 @@ final class WindowSwitcherService: ObservableObject {
             return
         }
 
-        _ = WindowRegistry.shared.focus(window)
+        _ = WorkspaceService.shared.focus(window: window)
     }
 
     private func scheduleFocusedPreview(forWindowIdentifier identifier: String) {
@@ -603,8 +599,7 @@ final class WindowSwitcherService: ObservableObject {
     private func registerHotKey(shortcut: KeyboardShortcut) {
         unregisterHotKey()
 
-        guard ProductService.shared.isUnlocked(.windowSwitcher),
-              DockyPreferences.shared.enablesWindowSwitcher,
+        guard DockyPreferences.shared.enablesWindowSwitcher,
               shortcut.isValid else {
             return
         }

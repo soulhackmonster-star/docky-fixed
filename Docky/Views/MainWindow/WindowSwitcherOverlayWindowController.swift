@@ -26,8 +26,7 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
             return true
         }
 
-        guard ProductService.shared.isUnlocked(.windowSwitcher),
-              preferences.showsWindowSwitcherFocusPreview,
+        guard preferences.showsWindowSwitcherFocusPreview,
               preferences.windowSwitcherPreviewMode == .instantFocus else {
             return true
         }
@@ -437,6 +436,12 @@ private struct WindowSwitcherListRow: View {
         )
     }
 
+    private var displayTitle: String {
+        window.isMinimized
+            ? "\(window.windowTitle) \(String(localized: "(minimized)"))"
+            : window.windowTitle
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Image(nsImage: IconCacheService.shared.icon(forBundleIdentifier: window.bundleIdentifier))
@@ -445,7 +450,7 @@ private struct WindowSwitcherListRow: View {
                 .frame(width: iconSize, height: iconSize)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(window.windowTitle)
+                Text(displayTitle)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.primary.opacity(isSelected ? 1 : 0.85))
                     .lineLimit(1)
@@ -460,7 +465,7 @@ private struct WindowSwitcherListRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if window.isMinimized {
-                Image(systemName: "minus.rectangle.fill")
+                Image(systemName: "minus.diamond.fill")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.primary.opacity(0.55))
             }
@@ -491,10 +496,6 @@ private struct WindowSwitcherListRow: View {
     }
 
     private func contextActions(modifierFlags: NSEvent.ModifierFlags) -> [ContextAction] {
-        guard ProductService.shared.isUnlocked(.windowSwitcher) else {
-            return []
-        }
-
         let dismiss = { switcher.dismiss() }
         var actions: [ContextAction] = [
             .action(String(localized: "Focus Window")) {
@@ -566,6 +567,8 @@ private struct WindowSwitcherCard: View {
     let trailingCornerRadius: CGFloat
     @ObservedObject private var switcher = WindowSwitcherService.shared
     @ObservedObject private var workspace = WorkspaceService.shared
+    @State private var isPreviewHovered = false
+    @State private var isMoreMenuPresented = false
 
     private let previewWidth: CGFloat = 180
     private let previewHeight: CGFloat = 102
@@ -582,12 +585,18 @@ private struct WindowSwitcherCard: View {
         )
     }
 
+    private var displayTitle: String {
+        window.isMinimized
+            ? "\(window.windowTitle) \(String(localized: "(minimized)"))"
+            : window.windowTitle
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             previewSurface
 
             VStack(spacing: 4) {
-                Text(window.windowTitle)
+                Text(displayTitle)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary.opacity(0.96))
                     .lineLimit(1)
@@ -641,14 +650,45 @@ private struct WindowSwitcherCard: View {
             }
         }
         .frame(width: previewWidth, height: previewHeight)
+        // Desaturate the thumbnail for minimized windows so a stale
+        // capture reads as "suspended" at a glance, paired with the
+        // diamond badge in the bottom-right corner.
+        .saturation(window.isMinimized ? 0 : 1)
+        .opacity(window.isMinimized ? 0.7 : 1)
         .clipShape(RoundedRectangle(cornerRadius: innerPreviewCornerRadius/4, style: .continuous))
+        .overlay {
+            if window.isMinimized {
+                minimizedBadge
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            if isPreviewHovered || isMoreMenuPresented {
+                MoreActionsButton(
+                    onPresentationChanged: { presented in
+                        isMoreMenuPresented = presented
+                        switcher.setContextMenuPresented(presented)
+                    },
+                    actionProvider: contextActions(modifierFlags:)
+                )
+                .padding(6)
+                .transition(.opacity)
+            }
+        }
+        .onHover { hovering in
+            isPreviewHovered = hovering
+        }
+        .animation(.easeInOut(duration: 0.12), value: isPreviewHovered)
+    }
+
+    private var minimizedBadge: some View {
+        Image(systemName: "minus.diamond.fill")
+            .font(.system(size: 32, weight: .semibold))
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(.white, .black.opacity(0.55))
+            .shadow(color: .black.opacity(0.45), radius: 4, y: 1)
     }
 
     private func contextActions(modifierFlags: NSEvent.ModifierFlags) -> [ContextAction] {
-        guard ProductService.shared.isUnlocked(.windowSwitcher) else {
-            return []
-        }
-
         let dismiss = { switcher.dismiss() }
         var actions: [ContextAction] = [
             .action(String(localized: "Focus Window")) {

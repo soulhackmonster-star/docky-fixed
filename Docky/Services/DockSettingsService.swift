@@ -9,8 +9,10 @@
 
 import AppKit
 import Combine
+import Observation
 
-final class DockSettingsService: ObservableObject {
+@Observable
+final class DockSettingsService {
     static let shared = DockSettingsService()
 
     enum Orientation: String {
@@ -21,17 +23,17 @@ final class DockSettingsService: ObservableObject {
         case genie, scale, suck
     }
 
-    @Published private(set) var orientation: Orientation = .bottom
-    @Published private(set) var tileSize: CGFloat = 48
-    @Published private(set) var largeSize: CGFloat = 64
-    @Published private(set) var magnification: Bool = false
-    @Published private(set) var autohide: Bool = false
-    @Published private(set) var autohideDelay: TimeInterval = 0.5
-    @Published private(set) var autohideTimeModifier: Double = 1.0
-    @Published private(set) var minimizeEffect: MinimizeEffect = .genie
-    @Published private(set) var minimizeToApplication: Bool = false
-    @Published private(set) var showRecents: Bool = true
-    @Published private(set) var showProcessIndicators: Bool = true
+    private(set) var orientation: Orientation = .bottom
+    private(set) var tileSize: CGFloat = 48
+    private(set) var largeSize: CGFloat = 64
+    private(set) var magnification: Bool = false
+    private(set) var autohide: Bool = false
+    private(set) var autohideDelay: TimeInterval = 0.5
+    private(set) var autohideTimeModifier: Double = 1.0
+    private(set) var minimizeEffect: MinimizeEffect = .genie
+    private(set) var minimizeToApplication: Bool = false
+    private(set) var showRecents: Bool = true
+    private(set) var showProcessIndicators: Bool = true
 
     /// Effective tile size used by every dock-rendering surface. Falls
     /// through to the active theme's `behavior.tileSize` when the user
@@ -46,7 +48,7 @@ final class DockSettingsService: ObservableObject {
         return tileSize
     }
 
-    private let defaults = UserDefaults.standard
+    @ObservationIgnored private let defaults = UserDefaults.standard
 
     private init() {
         if defaults.bool(forKey: Keys.hasImportedSystemDockSettings) {

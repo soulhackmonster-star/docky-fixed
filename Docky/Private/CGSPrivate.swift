@@ -95,14 +95,6 @@ func CGSSetWindowAlpha(
 ) -> Int32
 
 // MARK: - SkyLight Process Switching (SLPS)
-//
-// Used to bring a single window to the front without pulling all of an app's
-// other windows above other apps. The standard public path
-// (`NSRunningApplication.activate()`) reorders the entire app forward; SLPS
-// targets a specific CGWindowID. Same recipe AltTab and DockDoor use.
-//
-// Loaded via dlopen because the leading-underscore symbol isn't exposed in
-// the linker's export table even when CoreGraphics is linked.
 
 struct ProcessSerialNumber {
     var highLongOfPSN: UInt32 = 0
@@ -201,11 +193,6 @@ func CoreDockSendNotification(_ message: String) {
     fn(message as CFString, 0)
 }
 
-/// Posts the two synthetic events SkyLight expects after `SLPSSetFrontProcess`
-/// so the targeted window also receives keyboard focus. Without this, the
-/// window comes up visually but typing still routes to the previous app —
-/// the AltTab/DockDoor "key window" handshake. Byte layout matches DockDoor's
-/// implementation exactly; magic offsets are undocumented but known-stable.
 func slpsMakeKeyWindow(psn: inout ProcessSerialNumber, windowID: CGWindowID) {
     var bytes = [UInt8](repeating: 0, count: 0xF8)
     bytes[0x04] = 0xF8

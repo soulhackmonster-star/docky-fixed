@@ -12,6 +12,7 @@ import SwiftUI
 
 struct ProfilesSettingsView: View {
     @Bindable private var profileService = ProfileService.shared
+    @Bindable private var preferences = DockyPreferences.shared
 
     var body: some View {
         Form {
@@ -19,6 +20,18 @@ struct ProfilesSettingsView: View {
                 Text("Dock profiles each keep their own pinned apps, trailing items, widgets, and hidden-app list. Switch between them from the small ball at the leading edge of the dock.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section("Switcher") {
+                Toggle(isOn: $preferences.hidesProfileStrip) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Hide profile switcher")
+                        Text("Suppress the hover strip entirely. With multiple profiles you can still switch from Settings or via triggers. With only one profile the strip is always hidden.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
 
             Section("Profiles") {

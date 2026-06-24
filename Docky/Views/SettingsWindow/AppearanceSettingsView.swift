@@ -19,7 +19,7 @@ struct AppearanceSettingsView: View {
 
     let subsection: Subsection
 
-    @ObservedObject private var dockSettings = DockSettingsService.shared
+    private let dockSettings = DockSettingsService.shared
     @Bindable private var preferences = DockyPreferences.shared
     @State private var isShowingResetConfirmation = false
 

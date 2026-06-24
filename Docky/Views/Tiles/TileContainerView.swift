@@ -13,13 +13,12 @@ struct TileContainerView: View {
     private static let logger = Logger(subsystem: "gt.quintero.Docky", category: "TileDrag")
 
     @ObservedObject private var store = TileStore.shared
-    @ObservedObject private var dockSettings = DockSettingsService.shared
+    private let dockSettings = DockSettingsService.shared
     @ObservedObject private var layout = DockLayoutService.shared
     @Bindable private var preferences = DockyPreferences.shared
     @ObservedObject private var editMode = DockEditModeService.shared
-    @ObservedObject private var product = ProductService.shared
     @ObservedObject private var dockDrag = DockDragService.shared
-    @ObservedObject private var magnification = DockMagnificationService.shared
+    private let magnification = DockMagnificationService.shared
 
     @State private var draggedTileID: String?
     @State private var draggedTileOffset: CGFloat = 0
@@ -444,11 +443,6 @@ struct TileContainerView: View {
 
     private var palettePreviewTile: Tile? {
         guard let paletteDrag = editMode.paletteDrag else {
-            return nil
-        }
-
-        if let feature = paletteDrag.item.productFeature,
-           !product.availability(for: feature, context: .newPlacement).allowsNewPlacement {
             return nil
         }
 
@@ -1216,11 +1210,6 @@ struct TileContainerView: View {
     }
 
     static func makePinnedItem(from paletteItem: DockEditPaletteItem, widgetSpan: TileSpan?) -> PinnedTileItem? {
-        if let feature = paletteItem.productFeature,
-           !ProductService.shared.availability(for: feature, context: .newPlacement).allowsNewPlacement {
-            return nil
-        }
-
         return switch paletteItem {
         case .launchpad:
             PinnedTileItem.launchpad()
@@ -1253,11 +1242,6 @@ struct TileContainerView: View {
     }
 
     static func makeTrailingItem(from paletteDrag: DockEditPaletteDrag) -> TrailingTileItem? {
-        if let feature = paletteDrag.item.productFeature,
-           !ProductService.shared.availability(for: feature, context: .newPlacement).allowsNewPlacement {
-            return nil
-        }
-
         return switch paletteDrag.item {
         case .launchpad:
             nil
@@ -2148,11 +2132,6 @@ struct TileContainerView: View {
     }
 
     private static func palettePreviewTile(for paletteDrag: DockEditPaletteDrag) -> Tile? {
-        if let feature = paletteDrag.item.productFeature,
-           !ProductService.shared.availability(for: feature, context: .newPlacement).allowsNewPlacement {
-            return nil
-        }
-
         switch paletteDrag.item {
         case .launchpad:
             return Tile(

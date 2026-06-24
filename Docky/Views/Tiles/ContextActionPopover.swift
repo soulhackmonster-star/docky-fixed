@@ -361,3 +361,153 @@ private final class LazyMenuController: NSObject, NSMenuDelegate {
 }
 
 final class AnchorView: NSView {}
+
+extension ContextActionMenuPresenter {
+    /// Imperative entry point for popping the same context menu the
+    /// right-click handler would show, anchored to an arbitrary NSView
+    /// (typically the background view of a SwiftUI "more" button). The
+    /// menu build, autohide interruption, and private
+    /// `_popUpMenuRelativeToRect:` call are delegated to a transient
+    /// Coordinator so the visual is byte-identical to the right-click
+    /// path.
+    static func popUpMenu(
+        actions: [ContextAction],
+        from anchorView: NSView,
+        preferredEdge: NSRectEdge = .maxY,
+        onPresentationChanged: @escaping (Bool) -> Void = { _ in }
+    ) {
+        guard !actions.isEmpty else { return }
+        let coordinator = Coordinator(
+            actionProvider: { _ in actions },
+            preferredEdge: preferredEdge,
+            onPresentationChanged: onPresentationChanged
+        )
+        coordinator.presentMenu(actions: actions, from: anchorView)
+    }
+}
+
+extension ContextActionMenuPresenter.Coordinator {
+    /// Exposed for `ContextActionMenuPresenter.popUpMenu` so a button
+    /// can imperatively show the menu without going through the
+    /// right-click event monitor.
+    fileprivate func presentMenu(actions: [ContextAction], from anchorView: NSView) {
+        let menu = NSMenu()
+        for action in actions {
+            addMenuItem(for: action, to: menu)
+        }
+        popUpCartouche(menu: menu, in: anchorView)
+    }
+}
+
+/// Glass-styled overlay button that mirrors a card's right-click menu so
+/// users with trackpads (or anyone who didn't think to right-click) get
+/// the same actions on demand. Wraps an NSView anchor (used both for
+/// menu positioning and for hover detection) behind a SwiftUI label so
+/// the visual matches Docky's chrome — `.ultraThinMaterial` capsule
+/// with a hairline border and a soft shadow against the desaturated
+/// thumbnail below it.
+struct MoreActionsButton: View {
+    let actionProvider: (NSEvent.ModifierFlags) -> [ContextAction]
+    let preferredEdge: NSRectEdge
+    let onPresentationChanged: (Bool) -> Void
+
+    @State private var triggerCount: Int = 0
+
+    init(
+        preferredEdge: NSRectEdge = .maxY,
+        onPresentationChanged: @escaping (Bool) -> Void = { _ in },
+        actionProvider: @escaping (NSEvent.ModifierFlags) -> [ContextAction]
+    ) {
+        self.preferredEdge = preferredEdge
+        self.onPresentationChanged = onPresentationChanged
+        self.actionProvider = actionProvider
+    }
+
+    var body: some View {
+        Button {
+            triggerCount &+= 1
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 26, height: 26)
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay {
+                    Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.5)
+                }
+                .shadow(color: .black.opacity(0.4), radius: 3, y: 1)
+        }
+        .buttonStyle(.plain)
+        .help("More actions")
+        .background(
+            MoreActionsMenuAnchor(
+                trigger: triggerCount,
+                actionProvider: actionProvider,
+                preferredEdge: preferredEdge,
+                onPresentationChanged: onPresentationChanged
+            )
+        )
+    }
+}
+
+/// Hidden NSView positioned behind `MoreActionsButton` that serves as
+/// the menu anchor and listens for trigger changes. Each `trigger`
+/// increment from the SwiftUI side pops the menu exactly once.
+private struct MoreActionsMenuAnchor: NSViewRepresentable {
+    let trigger: Int
+    let actionProvider: (NSEvent.ModifierFlags) -> [ContextAction]
+    let preferredEdge: NSRectEdge
+    let onPresentationChanged: (Bool) -> Void
+
+    func makeNSView(context: Context) -> AnchorView { AnchorView() }
+
+    func updateNSView(_ nsView: AnchorView, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.actionProvider = actionProvider
+        coordinator.preferredEdge = preferredEdge
+        coordinator.onPresentationChanged = onPresentationChanged
+
+        guard trigger != coordinator.lastTrigger else { return }
+        coordinator.lastTrigger = trigger
+
+        // Defer to the next runloop tick so the view has had a chance
+        // to be inserted into its window before we try to anchor a
+        // menu against it. The first updateNSView fires before the
+        // host SwiftUI view is committed.
+        DispatchQueue.main.async {
+            guard nsView.window != nil else { return }
+            let actions = coordinator.actionProvider(NSEvent.modifierFlags)
+            ContextActionMenuPresenter.popUpMenu(
+                actions: actions,
+                from: nsView,
+                preferredEdge: coordinator.preferredEdge,
+                onPresentationChanged: coordinator.onPresentationChanged
+            )
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(
+            actionProvider: actionProvider,
+            preferredEdge: preferredEdge,
+            onPresentationChanged: onPresentationChanged
+        )
+    }
+
+    final class Coordinator {
+        var actionProvider: (NSEvent.ModifierFlags) -> [ContextAction]
+        var preferredEdge: NSRectEdge
+        var onPresentationChanged: (Bool) -> Void
+        var lastTrigger: Int = 0
+
+        init(
+            actionProvider: @escaping (NSEvent.ModifierFlags) -> [ContextAction],
+            preferredEdge: NSRectEdge,
+            onPresentationChanged: @escaping (Bool) -> Void
+        ) {
+            self.actionProvider = actionProvider
+            self.preferredEdge = preferredEdge
+            self.onPresentationChanged = onPresentationChanged
+        }
+    }
+}

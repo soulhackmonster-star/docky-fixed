@@ -439,6 +439,8 @@ private struct WindowPreviewCard: View {
 
     @ObservedObject private var preview = WindowPreviewService.shared
     @ObservedObject private var workspace = WorkspaceService.shared
+    @State private var isPreviewHovered = false
+    @State private var isMoreMenuPresented = false
 
     private let previewWidth: CGFloat = 180
     private let previewHeight: CGFloat = 102
@@ -517,7 +519,37 @@ private struct WindowPreviewCard: View {
             }
         }
         .frame(width: previewWidth, height: previewHeight)
+        // Desaturate stale minimized captures so they read as suspended,
+        // matching the switcher card treatment.
+        .saturation(window.isMinimized ? 0 : 1)
+        .opacity(window.isMinimized ? 0.7 : 1)
         .clipShape(RoundedRectangle(cornerRadius: innerPreviewCornerRadius / 4, style: .continuous))
+        .overlay {
+            if window.isMinimized {
+                Image(systemName: "minus.diamond.fill")
+                    .font(.system(size: 32, weight: .semibold))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, .black.opacity(0.55))
+                    .shadow(color: .black.opacity(0.45), radius: 4, y: 1)
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            if isPreviewHovered || isMoreMenuPresented {
+                MoreActionsButton(
+                    onPresentationChanged: { presented in
+                        isMoreMenuPresented = presented
+                        preview.setContextMenuPresented(presented)
+                    },
+                    actionProvider: contextActions(modifierFlags:)
+                )
+                .padding(6)
+                .transition(.opacity)
+            }
+        }
+        .onHover { hovering in
+            isPreviewHovered = hovering
+        }
+        .animation(.easeInOut(duration: 0.12), value: isPreviewHovered)
     }
 
     private func contextActions(modifierFlags: NSEvent.ModifierFlags) -> [ContextAction] {
@@ -657,7 +689,7 @@ private struct WindowPreviewListRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if window.isMinimized {
-                Image(systemName: "minus.rectangle.fill")
+                Image(systemName: "minus.diamond.fill")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.primary.opacity(0.55))
             }

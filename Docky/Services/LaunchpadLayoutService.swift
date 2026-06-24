@@ -195,6 +195,30 @@ import Observation
         persist()
     }
 
+    /// Moves `bundleID` to absolute position `targetIndex` within its
+    /// enclosing folder (`folderID`). `targetIndex` is in the
+    /// post-removal coordinate space, matching the launchpad reorder
+    /// gesture's convention. No-op when the app isn't in the folder or
+    /// the order is unchanged.
+    func moveAppInFolder(folderID: String, bundleID: String, toIndex targetIndex: Int) {
+        guard let folderIndex = layout.items.firstIndex(where: {
+            if case .folder(let folder) = $0 { return folder.id == folderID }
+            return false
+        }) else { return }
+        guard case .folder(var folder) = layout.items[folderIndex] else { return }
+        guard let currentIndex = folder.bundleIDs.firstIndex(of: bundleID) else { return }
+
+        var ids = folder.bundleIDs
+        ids.remove(at: currentIndex)
+        let clamped = max(0, min(targetIndex, ids.count))
+        ids.insert(bundleID, at: clamped)
+        guard ids != folder.bundleIDs else { return }
+
+        folder.bundleIDs = ids
+        layout.items[folderIndex] = .folder(folder)
+        persist()
+    }
+
     /// Renames a folder. Empty/whitespace-only names are rejected.
     func renameFolder(id folderID: String, to newName: String) {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)

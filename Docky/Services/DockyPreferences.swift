@@ -601,12 +601,6 @@ enum AppTileFrontmostClickBehavior: String, CaseIterable, Identifiable {
         }
     }
 
-    var requiresPro: Bool {
-        switch self {
-        case .none, .hide: false
-        case .cycleWindows, .minimizeAll: true
-        }
-    }
 }
 
 enum DockTileIndicatorShape: String, CaseIterable, Identifiable {
@@ -935,6 +929,28 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
             return .vertical
         }
         return .horizontal
+    }
+}
+
+/// How Launchpad orders its top-level entries. `.manual` preserves the
+/// user's drag-arranged layout; the others sort the grid on the fly
+/// without mutating the persisted layout, so switching back to
+/// `.manual` restores the custom order untouched.
+enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
+    case manual
+    case name
+    case dateCreated
+    case dateModified
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .manual: String(localized: "Default")
+        case .name: String(localized: "Alphabetical")
+        case .dateCreated: String(localized: "Date Created")
+        case .dateModified: String(localized: "Date Modified")
+        }
     }
 }
 
@@ -1646,6 +1662,16 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Whether running apps show their notification badge (the red count,
+    /// like Mail's unread total) on their dock tile. Read from the system
+    /// Dock via accessibility, see `DockBadgeService`.
+    var showsAppBadges: Bool {
+        didSet {
+            guard showsAppBadges != oldValue else { return }
+            defaults.set(showsAppBadges, forKey: Keys.showsAppBadges)
+        }
+    }
+
     /// Whether Docky should register itself to launch when the user logs in.
     var opensAtLogin: Bool {
         didSet {
@@ -1917,6 +1943,18 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         didSet {
             guard hidesRecentApps != oldValue else { return }
             defaults.set(hidesRecentApps, forKey: Keys.hidesRecentApps)
+        }
+    }
+
+    /// Hides the profile switcher strip even when more than one profile
+    /// exists. When `false` (default), the strip still hides itself
+    /// automatically while only the "Default" profile is around;
+    /// `ProfileSwitcherWindowController` observes both this flag and
+    /// the live profile count to drive show/hide.
+    var hidesProfileStrip: Bool {
+        didSet {
+            guard hidesProfileStrip != oldValue else { return }
+            defaults.set(hidesProfileStrip, forKey: Keys.hidesProfileStrip)
         }
     }
 
@@ -2289,6 +2327,84 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Icon edge length used by the Launchpad overlay at the 1440p
+    /// reference height. Doubles as the upper bound (smaller displays
+    /// scale down linearly from here; larger displays are clamped to
+    /// this value). Range comes from `DefaultValues.launchpadBaseIconSize`
+    /// bookends; the setter clamps so a corrupt stored value can't push
+    /// the icon outside that range.
+    var launchpadBaseIconSize: CGFloat {
+        didSet {
+            let clampedValue = min(
+                max(launchpadBaseIconSize, DefaultValues.launchpadBaseIconSizeMin),
+                DefaultValues.launchpadBaseIconSizeMax
+            )
+            guard clampedValue != oldValue else {
+                if launchpadBaseIconSize != clampedValue {
+                    launchpadBaseIconSize = clampedValue
+                }
+                return
+            }
+
+            if launchpadBaseIconSize != clampedValue {
+                launchpadBaseIconSize = clampedValue
+                return
+            }
+
+            defaults.set(Double(clampedValue), forKey: Keys.launchpadBaseIconSize)
+        }
+    }
+
+    /// Horizontal gap between Launchpad cells at the reference height.
+    /// Scaled down on smaller displays with the same screen-height
+    /// factor as the icon. Clamped to the bookends below.
+    var launchpadColumnSpacing: CGFloat {
+        didSet {
+            let clampedValue = min(
+                max(launchpadColumnSpacing, DefaultValues.launchpadSpacingMin),
+                DefaultValues.launchpadSpacingMax
+            )
+            guard clampedValue != oldValue else {
+                if launchpadColumnSpacing != clampedValue {
+                    launchpadColumnSpacing = clampedValue
+                }
+                return
+            }
+
+            if launchpadColumnSpacing != clampedValue {
+                launchpadColumnSpacing = clampedValue
+                return
+            }
+
+            defaults.set(Double(clampedValue), forKey: Keys.launchpadColumnSpacing)
+        }
+    }
+
+    /// Optional image path used as the Launchpad's full-screen
+    /// backdrop. When `nil` the launchpad falls back to the current
+    /// desktop wallpaper (the previous default).
+    var launchpadBackgroundImagePath: String? {
+        didSet {
+            guard launchpadBackgroundImagePath != oldValue else { return }
+            if let path = launchpadBackgroundImagePath, !path.isEmpty {
+                defaults.set(path, forKey: Keys.launchpadBackgroundImagePath)
+            } else {
+                defaults.removeObject(forKey: Keys.launchpadBackgroundImagePath)
+            }
+        }
+    }
+
+    /// Whether the launchpad's backdrop image (custom or desktop
+    /// wallpaper) is rendered through the heavy SwiftUI blur. Default
+    /// `true` matches the previous behavior; disabling shows the image
+    /// crisp, useful when the user picks a curated background.
+    var launchpadBackgroundBlursImage: Bool {
+        didSet {
+            guard launchpadBackgroundBlursImage != oldValue else { return }
+            defaults.set(launchpadBackgroundBlursImage, forKey: Keys.launchpadBackgroundBlursImage)
+        }
+    }
+
     /// Scroll axis for the Launchpad overlay. `.horizontal` keeps the
     /// classic Apple paged layout; `.vertical` renders a single
     /// continuous grid (matches macOS Tahoe's Apps view). Row count is
@@ -2297,6 +2413,16 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         didSet {
             guard launchpadLayoutAxis != oldValue else { return }
             defaults.set(launchpadLayoutAxis.rawValue, forKey: Keys.launchpadLayoutAxis)
+        }
+    }
+
+    /// Sort order applied to the Launchpad grid. Display-only — never
+    /// mutates the persisted layout, so `.manual` always restores the
+    /// user's drag-arranged order.
+    var launchpadSortMode: LaunchpadSortMode {
+        didSet {
+            guard launchpadSortMode != oldValue else { return }
+            defaults.set(launchpadSortMode.rawValue, forKey: Keys.launchpadSortMode)
         }
     }
 
@@ -2313,6 +2439,16 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         didSet {
             guard enablesWindowSwitcher != oldValue else { return }
             defaults.set(enablesWindowSwitcher, forKey: Keys.enablesWindowSwitcher)
+        }
+    }
+
+    /// Whether minimized windows appear alongside visible ones in the
+    /// switcher. When on, the switcher view dims them and labels them
+    /// "(minimized)" so the user can still tell them apart at a glance.
+    var includesMinimizedWindows: Bool {
+        didSet {
+            guard includesMinimizedWindows != oldValue else { return }
+            defaults.set(includesMinimizedWindows, forKey: Keys.includesMinimizedWindows)
         }
     }
 
@@ -3060,10 +3196,6 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
     }
 
     func appIconOverride(forBundleIdentifier bundleIdentifier: String) -> AppIconOverride? {
-        guard ProductService.shared.isUnlocked(.customAppIcons) else {
-            return nil
-        }
-
         return appIconOverrides.first { $0.bundleIdentifier == bundleIdentifier }
     }
 
@@ -3072,17 +3204,11 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
             return userURL
         }
         // Theme-supplied icons are convention-based: `assets/<bundle-id>.png`
-        // inside the active theme bundle. Not gated by the Pro
-        // `customAppIcons` flag, consistent with how other
-        // theme-supplied appearance values flow through unconditionally.
+        // inside the active theme bundle.
         return ThemeManager.shared.activeAppIconURL(forBundleIdentifier: bundleIdentifier)
     }
 
     func setAppIconOverride(bundleIdentifier: String, iconPath: String, paddingFraction: CGFloat? = nil) {
-        guard ProductService.shared.isUnlocked(.customAppIcons) else {
-            return
-        }
-
         guard !bundleIdentifier.isEmpty, !iconPath.isEmpty else {
             return
         }
@@ -3124,10 +3250,6 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
     }
 
     func trashIconOverride(forState state: TrashIconState) -> TrashIconOverride? {
-        guard ProductService.shared.isUnlocked(.customAppIcons) else {
-            return nil
-        }
-
         return trashIconOverrides.first { $0.state == state }
     }
 
@@ -3136,10 +3258,6 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
     }
 
     func setTrashIconOverride(state: TrashIconState, iconPath: String, paddingFraction: CGFloat? = nil) {
-        guard ProductService.shared.isUnlocked(.customAppIcons) else {
-            return
-        }
-
         guard !iconPath.isEmpty else {
             return
         }
@@ -3175,10 +3293,6 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
     }
 
     func folderIconOverride(forPath path: String) -> FolderIconOverride? {
-        guard ProductService.shared.isUnlocked(.customAppIcons) else {
-            return nil
-        }
-
         return folderIconOverrides.first { $0.folderPath == path }
     }
 
@@ -3187,10 +3301,6 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
     }
 
     func setFolderIconOverride(folderPath: String, iconPath: String, paddingFraction: CGFloat? = nil) {
-        guard ProductService.shared.isUnlocked(.customAppIcons) else {
-            return
-        }
-
         guard !folderPath.isEmpty, !iconPath.isEmpty else {
             return
         }
@@ -3229,9 +3339,6 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
     }
 
     var effectiveLaunchpadIconOverrideURL: URL? {
-        guard ProductService.shared.isUnlocked(.customAppIcons) else {
-            return nil
-        }
         guard let path = launchpadIconPath, !path.isEmpty else {
             return nil
         }
@@ -3249,9 +3356,6 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
     }
 
     var effectiveStartMenuIconOverrideURL: URL? {
-        guard ProductService.shared.isUnlocked(.customAppIcons) else {
-            return nil
-        }
         guard let path = startMenuIconPath, !path.isEmpty else {
             return nil
         }
@@ -3342,6 +3446,7 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         static let windowDisplayTarget = "docky.windowDisplayTarget"
         static let windowSpaceBehavior = "docky.windowSpaceBehavior"
         static let autohidesWindow = "docky.autohidesWindow"
+        static let showsAppBadges = "docky.showsAppBadges"
         static let opensAtLogin = "docky.opensAtLogin"
         static let autohideWindowDelay = "docky.autohideWindowDelay"
         static let fullscreenRevealDelay = "docky.fullscreenRevealDelay"
@@ -3362,6 +3467,7 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         static let shelveHidesFinder = "docky.shelveHidesFinder"
         static let shelveHidesTrash = "docky.shelveHidesTrash"
         static let hidesRecentApps = "docky.hidesRecentApps"
+        static let hidesProfileStrip = "docky.hidesProfileStrip"
         static let appTileFrontmostClickBehavior = "docky.appTileFrontmostClickBehavior"
         static let activeIndicatorShape = "docky.activeIndicatorShape"
         static let activeIndicatorImagePath = "docky.activeIndicatorImagePath"
@@ -3398,9 +3504,15 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         static let launchpadOverlayTransparency = "docky.launchpadOverlayTransparency"
         static let launchpadGridColumnCount = "docky.launchpadGridColumnCount"
         static let launchpadGridRowCount = "docky.launchpadGridRowCount"
+        static let launchpadBaseIconSize = "docky.launchpadBaseIconSize"
+        static let launchpadColumnSpacing = "docky.launchpadColumnSpacing"
+        static let launchpadBackgroundImagePath = "docky.launchpadBackgroundImagePath"
+        static let launchpadBackgroundBlursImage = "docky.launchpadBackgroundBlursImage"
         static let launchpadLayoutAxis = "docky.launchpadLayoutAxis"
+        static let launchpadSortMode = "docky.launchpadSortMode"
         static let launchpadShortcut = "docky.launchpadShortcut"
         static let enablesWindowSwitcher = "docky.enablesWindowSwitcher"
+        static let includesMinimizedWindows = "docky.includesMinimizedWindows"
         static let windowSwitcherShortcut = "docky.windowSwitcherShortcut"
         static let showsWindowSwitcherFocusPreview = "docky.showsWindowSwitcherFocusPreview"
         static let windowSwitcherPreviewMode = "docky.windowSwitcherPreviewMode"
@@ -3439,6 +3551,7 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         static let windowDisplayTarget: DockWindowDisplayTarget = .primaryDisplay
         static let windowSpaceBehavior: DockWindowSpaceBehavior = .allSpaces
         static let autohidesWindow = false
+        static let showsAppBadges = true
         static let opensAtLogin = true
         static let autohideWindowDelay: TimeInterval = 0.5
         static let fullscreenRevealDelay: TimeInterval = 0.5
@@ -3459,6 +3572,7 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         static let shelveHidesFinder = true
         static let shelveHidesTrash = true
         static let hidesRecentApps = false
+        static let hidesProfileStrip = false
         static let appTileFrontmostClickBehavior: AppTileFrontmostClickBehavior = .none
         static let activeIndicatorShape: DockTileIndicatorShape = .dot
         static let activeIndicatorImagePath: String? = nil
@@ -3492,12 +3606,22 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         static let enablesLaunchpadOverlay = true
         static let enablesStartMenuOverlay = true
         static let opensStartMenuFromFinderTile = false
-        static let launchpadOverlayTransparency: CGFloat = 0.4
+        static let launchpadOverlayTransparency: CGFloat = 0.75
         static let launchpadGridColumnCount = 7
         static let launchpadGridRowCount = 5
+        static let launchpadBaseIconSize: CGFloat = 128
+        static let launchpadBaseIconSizeMin: CGFloat = 48
+        static let launchpadBaseIconSizeMax: CGFloat = 192
+        static let launchpadColumnSpacing: CGFloat = 96
+        static let launchpadSpacingMin: CGFloat = 0
+        static let launchpadSpacingMax: CGFloat = 96
+        static let launchpadBackgroundImagePath: String? = nil
+        static let launchpadBackgroundBlursImage = true
         static let launchpadLayoutAxis: LaunchpadLayoutAxis = .defaultForCurrentOS
+        static let launchpadSortMode: LaunchpadSortMode = .manual
         static let launchpadShortcut = KeyboardShortcut.empty
         static let enablesWindowSwitcher = true
+        static let includesMinimizedWindows = true
         static let windowSwitcherShortcut = KeyboardShortcut(keyCode: 48, modifierFlags: [.option])
         static let showsWindowSwitcherFocusPreview = true
         static let windowSwitcherPreviewMode: WindowSwitcherPreviewMode = .inPlace
@@ -3556,6 +3680,7 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         let storedWindowDisplayTarget = defaults.string(forKey: Keys.windowDisplayTarget)
         let storedWindowSpaceBehavior = defaults.string(forKey: Keys.windowSpaceBehavior)
         let storedAutohidesWindow = defaults.object(forKey: Keys.autohidesWindow) as? Bool
+        let storedShowsAppBadges = defaults.object(forKey: Keys.showsAppBadges) as? Bool
         let storedOpensAtLogin = defaults.object(forKey: Keys.opensAtLogin) as? Bool
         let storedAutohideWindowDelay = defaults.object(forKey: Keys.autohideWindowDelay) as? Double
         let storedFullscreenRevealDelay = defaults.object(forKey: Keys.fullscreenRevealDelay) as? Double
@@ -3575,6 +3700,7 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         let storedShelveHidesFinder = defaults.object(forKey: Keys.shelveHidesFinder) as? Bool
         let storedShelveHidesTrash = defaults.object(forKey: Keys.shelveHidesTrash) as? Bool
         let storedHidesRecentApps = defaults.object(forKey: Keys.hidesRecentApps) as? Bool
+        let storedHidesProfileStrip = defaults.object(forKey: Keys.hidesProfileStrip) as? Bool
         let storedAppTileFrontmostClickBehavior = defaults.string(forKey: Keys.appTileFrontmostClickBehavior)
         let storedActiveIndicatorShape = defaults.string(forKey: Keys.activeIndicatorShape)
         let storedActiveIndicatorImagePath = defaults.string(forKey: Keys.activeIndicatorImagePath)
@@ -3611,9 +3737,15 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         let storedLaunchpadOverlayTransparency = defaults.object(forKey: Keys.launchpadOverlayTransparency) as? Double
         let storedLaunchpadGridColumnCount = defaults.object(forKey: Keys.launchpadGridColumnCount) as? Int
         let storedLaunchpadGridRowCount = defaults.object(forKey: Keys.launchpadGridRowCount) as? Int
+        let storedLaunchpadBaseIconSize = defaults.object(forKey: Keys.launchpadBaseIconSize) as? Double
+        let storedLaunchpadColumnSpacing = defaults.object(forKey: Keys.launchpadColumnSpacing) as? Double
+        let storedLaunchpadBackgroundImagePath = defaults.string(forKey: Keys.launchpadBackgroundImagePath)
+        let storedLaunchpadBackgroundBlursImage = defaults.object(forKey: Keys.launchpadBackgroundBlursImage) as? Bool
         let storedLaunchpadLayoutAxis = defaults.string(forKey: Keys.launchpadLayoutAxis)
+        let storedLaunchpadSortMode = defaults.string(forKey: Keys.launchpadSortMode)
         let storedLaunchpadShortcut = defaults.data(forKey: Keys.launchpadShortcut)
         let storedEnablesWindowSwitcher = defaults.object(forKey: Keys.enablesWindowSwitcher) as? Bool
+        let storedIncludesMinimizedWindows = defaults.object(forKey: Keys.includesMinimizedWindows) as? Bool
         let storedWindowSwitcherShortcut = defaults.data(forKey: Keys.windowSwitcherShortcut)
         let storedShowsWindowSwitcherFocusPreview = defaults.object(forKey: Keys.showsWindowSwitcherFocusPreview) as? Bool
         let storedWindowSwitcherPreviewMode = defaults.string(forKey: Keys.windowSwitcherPreviewMode)
@@ -3671,6 +3803,7 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         self.windowDisplayTarget = (storedWindowDisplayTarget.flatMap(DockWindowDisplayTarget.init(rawValue:)) ?? DefaultValues.windowDisplayTarget)
         self.windowSpaceBehavior = (storedWindowSpaceBehavior.flatMap(DockWindowSpaceBehavior.init(rawValue:)) ?? DefaultValues.windowSpaceBehavior)
         self.autohidesWindow = storedAutohidesWindow ?? DefaultValues.autohidesWindow
+        self.showsAppBadges = storedShowsAppBadges ?? DefaultValues.showsAppBadges
         self.opensAtLogin = storedOpensAtLogin ?? LaunchAtLoginService.shared.isEnabled
         self.autohideWindowDelay = max(storedAutohideWindowDelay ?? DefaultValues.autohideWindowDelay, 0)
         self.fullscreenRevealDelay = max(storedFullscreenRevealDelay ?? DefaultValues.fullscreenRevealDelay, 0)
@@ -3693,6 +3826,7 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         self.shelveHidesFinder = storedShelveHidesFinder ?? DefaultValues.shelveHidesFinder
         self.shelveHidesTrash = storedShelveHidesTrash ?? DefaultValues.shelveHidesTrash
         self.hidesRecentApps = storedHidesRecentApps ?? DefaultValues.hidesRecentApps
+        self.hidesProfileStrip = storedHidesProfileStrip ?? DefaultValues.hidesProfileStrip
         self.appTileFrontmostClickBehavior = storedAppTileFrontmostClickBehavior
             .flatMap(AppTileFrontmostClickBehavior.init(rawValue:))
             ?? DefaultValues.appTileFrontmostClickBehavior
@@ -3735,11 +3869,31 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         ), 1)
         self.launchpadGridColumnCount = max(storedLaunchpadGridColumnCount ?? DefaultValues.launchpadGridColumnCount, 1)
         self.launchpadGridRowCount = max(storedLaunchpadGridRowCount ?? DefaultValues.launchpadGridRowCount, 1)
+        self.launchpadBaseIconSize = min(
+            max(
+                storedLaunchpadBaseIconSize.map { CGFloat($0) } ?? DefaultValues.launchpadBaseIconSize,
+                DefaultValues.launchpadBaseIconSizeMin
+            ),
+            DefaultValues.launchpadBaseIconSizeMax
+        )
+        self.launchpadColumnSpacing = min(
+            max(
+                storedLaunchpadColumnSpacing.map { CGFloat($0) } ?? DefaultValues.launchpadColumnSpacing,
+                DefaultValues.launchpadSpacingMin
+            ),
+            DefaultValues.launchpadSpacingMax
+        )
+        self.launchpadBackgroundImagePath = storedLaunchpadBackgroundImagePath
+        self.launchpadBackgroundBlursImage = storedLaunchpadBackgroundBlursImage ?? DefaultValues.launchpadBackgroundBlursImage
         self.launchpadLayoutAxis = storedLaunchpadLayoutAxis
             .flatMap(LaunchpadLayoutAxis.init(rawValue:))
             ?? DefaultValues.launchpadLayoutAxis
+        self.launchpadSortMode = storedLaunchpadSortMode
+            .flatMap(LaunchpadSortMode.init(rawValue:))
+            ?? DefaultValues.launchpadSortMode
         self.launchpadShortcut = Self.decodeKeyboardShortcut(from: storedLaunchpadShortcut) ?? DefaultValues.launchpadShortcut
         self.enablesWindowSwitcher = storedEnablesWindowSwitcher ?? DefaultValues.enablesWindowSwitcher
+        self.includesMinimizedWindows = storedIncludesMinimizedWindows ?? DefaultValues.includesMinimizedWindows
         self.windowSwitcherShortcut = Self.decodeKeyboardShortcut(from: storedWindowSwitcherShortcut) ?? DefaultValues.windowSwitcherShortcut
         self.showsWindowSwitcherFocusPreview = storedShowsWindowSwitcherFocusPreview ?? DefaultValues.showsWindowSwitcherFocusPreview
         self.windowSwitcherPreviewMode = storedWindowSwitcherPreviewMode.flatMap(WindowSwitcherPreviewMode.init(rawValue:)) ?? DefaultValues.windowSwitcherPreviewMode
@@ -3914,6 +4068,7 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
 
         // Visibility
         autohidesWindow = DefaultValues.autohidesWindow
+        showsAppBadges = DefaultValues.showsAppBadges
         autohideWindowDelay = DefaultValues.autohideWindowDelay
         hidesDuringFullscreen = DefaultValues.hidesDuringFullscreen
         fullscreenRevealDelay = DefaultValues.fullscreenRevealDelay
@@ -3969,6 +4124,7 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         windowDisplayTarget = DefaultValues.windowDisplayTarget
         windowSpaceBehavior = DefaultValues.windowSpaceBehavior
         autohidesWindow = DefaultValues.autohidesWindow
+        showsAppBadges = DefaultValues.showsAppBadges
         opensAtLogin = DefaultValues.opensAtLogin
         autohideWindowDelay = DefaultValues.autohideWindowDelay
         fullscreenRevealDelay = DefaultValues.fullscreenRevealDelay
@@ -4021,6 +4177,7 @@ enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
         launchpadGridRowCount = DefaultValues.launchpadGridRowCount
         launchpadShortcut = DefaultValues.launchpadShortcut
         enablesWindowSwitcher = DefaultValues.enablesWindowSwitcher
+        includesMinimizedWindows = DefaultValues.includesMinimizedWindows
         windowSwitcherShortcut = DefaultValues.windowSwitcherShortcut
         showsWindowSwitcherFocusPreview = DefaultValues.showsWindowSwitcherFocusPreview
         windowSwitcherPreviewMode = DefaultValues.windowSwitcherPreviewMode

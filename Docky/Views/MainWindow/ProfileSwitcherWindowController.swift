@@ -20,6 +20,7 @@ final class ProfileSwitcherWindowController: NSWindowController {
     private var cancellables: Set<AnyCancellable> = []
     private var alphaObservation: NSKeyValueObservation?
     private let preferences = DockyPreferences.shared
+    private let profileService = ProfileService.shared
     private let dockSettings = DockSettingsService.shared
     private let hostingController: NSHostingController<ProfileSwitcherButtonView>
     private let chromeGap: CGFloat = 8
@@ -27,6 +28,10 @@ final class ProfileSwitcherWindowController: NSWindowController {
     /// matching `endInteraction()` yet. Keeps the count balanced when
     /// the switcher's hover state flips repeatedly.
     private var isHoldingMainInteraction = false
+    /// Tracks the last visibility decision so we don't redundantly
+    /// orderFront/orderOut the companion window on every observation
+    /// tick. Driven by `applyStripVisibility`.
+    private var isStripVisible = true
 
     init(mainWindow: MainWindow) {
         self.mainWindow = mainWindow
@@ -57,6 +62,7 @@ final class ProfileSwitcherWindowController: NSWindowController {
         observeMainWindow()
         observePositionChanges()
         observeSpaceBehavior()
+        observeStripVisibility()
     }
 
     deinit {
@@ -77,15 +83,57 @@ final class ProfileSwitcherWindowController: NSWindowController {
         window.alphaValue = mainWindow.alphaValue
         window.ignoresMouseEvents = false
         updateRootViewAndFrame()
-        window.orderFront(nil)
+        applyStripVisibility(force: true)
 
         alphaObservation = mainWindow.observe(\.alphaValue, options: [.initial, .new]) { [weak self] _, change in
             guard let self, let newAlpha = change.newValue else { return }
             self.window?.alphaValue = newAlpha
             // When the dock is hidden (alpha ≈ 0) the switcher shouldn't
-            // be reachable either, so stop hit-testing it.
+            // be reachable either, so stop hit-testing it. The strip's
+            // own visibility gate (profile count / preference) wins on
+            // top of this in `applyStripVisibility`.
+            guard self.isStripVisible else { return }
             self.window?.ignoresMouseEvents = newAlpha < 0.05
         }
+    }
+
+    /// Recomputes whether the companion window should be on-screen at
+    /// all. Hidden when the user has explicitly disabled the strip or
+    /// when there's only a single profile (one-profile case mirrors
+    /// macOS: nothing to switch to, so the affordance is noise).
+    private func shouldShowStrip() -> Bool {
+        guard !preferences.hidesProfileStrip else { return false }
+        return profileService.profiles.count > 1
+    }
+
+    private func applyStripVisibility(force: Bool = false) {
+        guard let window else { return }
+        let visible = shouldShowStrip()
+        guard force || visible != isStripVisible else { return }
+        isStripVisible = visible
+        if visible {
+            updateRootViewAndFrame()
+            window.ignoresMouseEvents = (mainWindow?.alphaValue ?? 1) < 0.05
+            window.orderFront(nil)
+        } else {
+            window.ignoresMouseEvents = true
+            window.orderOut(nil)
+            // Drop the interaction hold so the dock can autohide if the
+            // strip was active when it disappeared.
+            if isHoldingMainInteraction {
+                mainWindow?.endInteraction()
+                isHoldingMainInteraction = false
+            }
+        }
+    }
+
+    private func observeStripVisibility() {
+        observeChanges { [weak self] in
+            _ = DockyPreferences.shared.hidesProfileStrip
+            _ = ProfileService.shared.profiles.count
+            self?.applyStripVisibility()
+        }
+        .store(in: &cancellables)
     }
 
     private func applySwitcherActive(_ active: Bool) {

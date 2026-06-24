@@ -20,7 +20,6 @@ struct BehaviorSettingsView: View {
     let subsection: Subsection
 
     @Bindable private var preferences = DockyPreferences.shared
-    @ObservedObject private var product = ProductService.shared
     @State private var isShowingResetConfirmation = false
 
     var body: some View {
@@ -306,6 +305,16 @@ struct BehaviorSettingsView: View {
             .padding(.vertical, 4)
 
             VStack(alignment: .leading, spacing: 8) {
+                Toggle("Show Notification Badges", isOn: $preferences.showsAppBadges)
+                    .font(.headline)
+
+                Text("Paints the red notification count (like Mail's unread total) on running app tiles. Read from the system Dock, so it needs Accessibility permission.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 4)
+
+            VStack(alignment: .leading, spacing: 8) {
                 Toggle("Disable Recent Apps", isOn: $preferences.hidesRecentApps)
                     .font(.headline)
 
@@ -335,6 +344,16 @@ struct BehaviorSettingsView: View {
                     .font(.headline)
 
                 Text("When turned off, minimized window tiles do not appear in Docky's trailing section.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 4)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("List Minimized Windows in Switcher & Previews", isOn: $preferences.includesMinimizedWindows)
+                    .font(.headline)
+
+                Text("Include minimized windows in the window switcher and per-tile hover previews. They render dimmed with a \"(minimized)\" label so they stand out from active windows.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -463,14 +482,9 @@ struct BehaviorSettingsView: View {
     @ViewBuilder
     private var appFoldersSection: some View {
         Section {
-            if !product.isUnlocked(.groupedAppFolders) {
-                ProFeatureNotice(feature: .groupedAppFolders)
-            }
-
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("Shows Grouped Opened Apps In Dock", isOn: $preferences.showsGroupedOpenedAppsInDock)
                     .font(.headline)
-                    .disabled(!product.isUnlocked(.groupedAppFolders))
 
                 Text("Shows running apps from an app folder immediately to the right of that folder, and lets the folder reflect how many grouped apps are open.")
                     .foregroundStyle(.secondary)
@@ -481,7 +495,7 @@ struct BehaviorSettingsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("Shows Grouping Backdrop", isOn: $preferences.showsGroupedOpenedAppsBackdrop)
                     .font(.headline)
-                    .disabled(!product.isUnlocked(.groupedAppFolders) || !preferences.showsGroupedOpenedAppsInDock)
+                    .disabled(!preferences.showsGroupedOpenedAppsInDock)
 
                 Text("Draws a rounded backdrop around the folder tile and its grouped opened apps. Turn off to keep the grouping without the visual halo.")
                     .foregroundStyle(.secondary)
@@ -504,18 +518,13 @@ struct BehaviorSettingsView: View {
         Binding(
             get: { preferences.appTileFrontmostClickBehavior },
             set: { newValue in
-                if newValue.requiresPro && product.currentTier != .pro {
-                    preferences.appTileFrontmostClickBehavior = .none
-                } else {
-                    preferences.appTileFrontmostClickBehavior = newValue
-                }
+                preferences.appTileFrontmostClickBehavior = newValue
             }
         )
     }
 
     private func frontmostClickBehaviorTitle(_ behavior: AppTileFrontmostClickBehavior) -> String {
-        let isLocked = behavior.requiresPro && product.currentTier != .pro
-        return isLocked ? "\(behavior.title) (Pro)" : behavior.title
+        behavior.title
     }
 
     private func spanBinding(for span: TileSpan) -> Binding<Bool> {

@@ -11,29 +11,31 @@
 import Combine
 import CoreGraphics
 import Foundation
+import Observation
 import QuartzCore
 
-final class DockMagnificationService: ObservableObject {
+@Observable
+final class DockMagnificationService {
     static let shared = DockMagnificationService()
 
     /// Animated factor in [0, 1]. Multiplied into the per-icon falloff so the
     /// effect ramps in/out without a jarring snap when the cursor crosses
     /// the dock boundary.
-    @Published private(set) var strength: CGFloat = 0
+    private(set) var strength: CGFloat = 0
 
     /// Pointer location in the tile container's local coordinate space, or
     /// nil when the pointer is outside the magnification region.
-    @Published private(set) var pointerLocation: CGPoint? = nil
+    private(set) var pointerLocation: CGPoint? = nil
 
     /// Maps the cosine half-bell so that t=0 → 1 and t=1 → 0.
     /// Apple Dock's curve has been studied this way; not a perfect match
     /// but visually very close.
     private static let rampDuration: CFTimeInterval = 0.15
 
-    private var rampSource: CGFloat = 0
-    private var rampTarget: CGFloat = 0
-    private var rampStart: CFTimeInterval = 0
-    private var rampTimer: Timer?
+    @ObservationIgnored private var rampSource: CGFloat = 0
+    @ObservationIgnored private var rampTarget: CGFloat = 0
+    @ObservationIgnored private var rampStart: CFTimeInterval = 0
+    @ObservationIgnored private var rampTimer: Timer?
 
     private init() {}
 

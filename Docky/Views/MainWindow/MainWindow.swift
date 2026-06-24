@@ -342,10 +342,6 @@ final class MainWindow: NSPanel {
         // DockEditModeService are still ObservableObject; their
         // `@Published` projections are merged via Combine below.
         let layoutSignals: [AnyPublisher<Void, Never>] = [
-            dockSettings.$orientation.map { _ in () }.eraseToAnyPublisher(),
-            dockSettings.$tileSize.map { _ in () }.eraseToAnyPublisher(),
-            dockSettings.$largeSize.map { _ in () }.eraseToAnyPublisher(),
-            dockSettings.$magnification.map { _ in () }.eraseToAnyPublisher(),
             editMode.$paletteDrag.map { _ in () }.eraseToAnyPublisher(),
             editMode.$paletteDropDestination.map { _ in () }.eraseToAnyPublisher(),
             DockDragService.shared.$kind.map { _ in () }.eraseToAnyPublisher(),
@@ -360,15 +356,19 @@ final class MainWindow: NSPanel {
 
         observeChanges { [weak self] in
             guard let self else { return }
-            // Touch every preference that drives frame layout, the
-            // Observation framework tracks these reads and re-runs the
-            // closure on any change.
+            // Touch every preference and dock-setting that drives frame
+            // layout. The Observation framework tracks these reads and
+            // re-runs the closure on any change.
             _ = preferences.effectiveTileVerticalPadding
             _ = preferences.effectiveTileSpacing
             _ = preferences.overflowBehavior
             _ = preferences.effectiveWindowAxisSizing
             _ = preferences.windowPosition
             _ = preferences.windowDisplayTarget
+            _ = dockSettings.orientation
+            _ = dockSettings.tileSize
+            _ = dockSettings.largeSize
+            _ = dockSettings.magnification
             self.applyCurrentFrame(animated: true, duration: self.tileMutationAnimationDuration)
         }
         .store(in: &cancellables)

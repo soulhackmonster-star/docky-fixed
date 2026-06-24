@@ -24,7 +24,7 @@ struct ProfileSwitcherButtonView: View {
 
     @Bindable private var preferences = DockyPreferences.shared
     @Bindable private var profileService = ProfileService.shared
-    @ObservedObject private var dockSettings = DockSettingsService.shared
+    private let dockSettings = DockSettingsService.shared
     @ObservedObject private var layoutService = DockLayoutService.shared
     @State private var isHoveringZone = false
     @State private var isHoveringButton = false
