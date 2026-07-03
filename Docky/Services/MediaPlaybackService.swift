@@ -58,6 +58,13 @@ struct MediaPlaybackState: Equatable {
     }
 }
 
+struct MediaAppChoice: Equatable, Identifiable {
+    let bundleIdentifier: String
+    let displayName: String
+
+    var id: String { bundleIdentifier }
+}
+
 final class MediaPlaybackService: ObservableObject {
     static let shared = MediaPlaybackService()
     static let genericNowPlayingOwnerBundleIdentifier = WidgetOwnerBundleIdentifiers.genericNowPlaying
@@ -104,6 +111,20 @@ final class MediaPlaybackService: ObservableObject {
         statesByBundleIdentifier.values
             .filter(\ .hasContent)
             .max { lhs, rhs in lhs.lastUpdated < rhs.lastUpdated }
+    }
+
+    /// Trackable media apps for the per-widget picker, derived from what MediaRemote reports; the generic placeholder is excluded (offered separately as "Automatic").
+    func availableMediaApps() -> [MediaAppChoice] {
+        statesByBundleIdentifier.values
+            .filter { $0.bundleIdentifier != Self.genericNowPlayingOwnerBundleIdentifier }
+            .map { MediaAppChoice(bundleIdentifier: $0.bundleIdentifier, displayName: $0.displayName) }
+            .sorted { lhs, rhs in
+                let comparison = lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+                if comparison == .orderedSame {
+                    return lhs.bundleIdentifier.localizedCaseInsensitiveCompare(rhs.bundleIdentifier) == .orderedAscending
+                }
+                return comparison == .orderedAscending
+            }
     }
 
     func refresh() {

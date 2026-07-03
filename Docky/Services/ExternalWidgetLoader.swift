@@ -199,7 +199,12 @@ final class ExternalWidgetLoader {
         }
 
         let plugin = pluginType.init()
-        let registration = ExternalWidgetRegistration(plugin: plugin, bundleURL: url)
+        let settingsSchema = ExternalWidgetSettingsManifest.load(from: bundle)
+        let registration = ExternalWidgetRegistration(
+            plugin: plugin,
+            bundleURL: url,
+            settingsSchema: settingsSchema
+        )
         ExternalWidgetRegistry.shared.register(registration)
         loadFailures.removeValue(forKey: standardized)
 

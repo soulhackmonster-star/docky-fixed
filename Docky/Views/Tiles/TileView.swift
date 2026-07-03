@@ -1975,6 +1975,10 @@ struct TileView: View {
             actions.append(.action(String(localized: "Open Calendar")) {
                 WorkspaceService.shared.activateOrOpen(bundleIdentifier: WidgetOwnerBundleIdentifiers.calendar)
             })
+            if let settingsAction = widgetSettingsAction(for: widget) {
+                actions.append(.divider)
+                actions.append(settingsAction)
+            }
             actions.append(.divider)
             actions.append(widgetRemovalAction(for: widget))
             return actions
@@ -2096,6 +2100,10 @@ struct TileView: View {
                 actions.append(spanMenuAction)
             }
 
+            if let settingsAction = widgetSettingsAction(for: widget) {
+                actions.append(.divider)
+                actions.append(settingsAction)
+            }
             actions.append(.divider)
             actions.append(widgetRemovalAction(for: widget, nonDockyTitle: "Remove Stack"))
             return actions
@@ -2115,6 +2123,10 @@ struct TileView: View {
             actions.append(.action(String(localized: "Open Weather")) {
                 WeatherService.shared.openInWeatherApp()
             })
+            if let settingsAction = widgetSettingsAction(for: widget) {
+                actions.append(.divider)
+                actions.append(settingsAction)
+            }
             actions.append(.divider)
             actions.append(widgetRemovalAction(for: widget))
             return actions
@@ -2138,8 +2150,30 @@ struct TileView: View {
                 actions.append(spanMenuAction)
                 actions.append(.divider)
             }
+            if let settingsAction = widgetSettingsAction(for: widget) {
+                actions.append(settingsAction)
+                actions.append(.divider)
+            }
             actions.append(widgetRemovalAction(for: widget))
             return actions
+        }
+    }
+
+    /// Only pinned/trailing widgets carry per-instance identity, so only they get settings.
+    private func widgetSettingsAction(for widget: WidgetTile) -> ContextAction? {
+        guard isDockyPinnedTile || isDockyTrailingTile else {
+            return nil
+        }
+        guard widget.kind.hasConfigurableSettings else {
+            return nil
+        }
+
+        return .action(String(localized: "Widget Settings…")) {
+            WidgetSettingsPanelController.shared.present(
+                widget: widget,
+                tileID: tile.id,
+                sourceFrame: globalTileFrame
+            )
         }
     }
 

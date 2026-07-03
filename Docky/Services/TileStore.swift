@@ -1285,7 +1285,8 @@ final class TileStore: ObservableObject {
             widgetKind: existingItem.widgetKind,
             widgetOwnerBundleIdentifier: existingItem.widgetOwnerBundleIdentifier,
             widgetSpan: span,
-            hiddenWidgetOwnerBundleIdentifiers: existingItem.hiddenWidgetOwnerBundleIdentifiers
+            hiddenWidgetOwnerBundleIdentifiers: existingItem.hiddenWidgetOwnerBundleIdentifiers,
+            widgetSettings: existingItem.widgetSettings
         )
         preferences.pinnedItems = pinnedItems
         refreshPinnedTilesFromPreferences()
@@ -1315,11 +1316,61 @@ final class TileStore: ObservableObject {
             widgetKind: existingItem.widgetKind,
             widgetOwnerBundleIdentifier: existingItem.widgetOwnerBundleIdentifier,
             widgetSpan: span,
-            hiddenWidgetOwnerBundleIdentifiers: existingItem.hiddenWidgetOwnerBundleIdentifiers
+            hiddenWidgetOwnerBundleIdentifiers: existingItem.hiddenWidgetOwnerBundleIdentifiers,
+            widgetSettings: existingItem.widgetSettings
         )
         preferences.trailingItems = trailingItems
         refreshTrailingTilesFromPreferences()
         rebuildTiles()
+    }
+
+    func widgetSettings(tileID: String) -> WidgetSettings? {
+        if let item = preferences.pinnedItems.first(where: { Self.pinnedTileID(for: $0) == tileID }),
+           item.kind == .widget {
+            return item.widgetSettings
+        }
+        if let item = preferences.trailingItems.first(where: { Self.trailingTileID(for: $0) == tileID }),
+           item.kind == .widget {
+            return item.widgetSettings
+        }
+        return nil
+    }
+
+    /// Empty normalizes to nil; re-materializes tiles so edits apply live.
+    func setWidgetSettings(tileID: String, settings: WidgetSettings) {
+        let normalized: WidgetSettings? = settings.isEmpty ? nil : settings
+
+        if let itemIndex = preferences.pinnedItems.firstIndex(where: { Self.pinnedTileID(for: $0) == tileID }),
+           preferences.pinnedItems[itemIndex].kind == .widget {
+            guard preferences.pinnedItems[itemIndex].widgetSettings != normalized else { return }
+            var pinnedItems = preferences.pinnedItems
+            pinnedItems[itemIndex].widgetSettings = normalized
+            preferences.pinnedItems = pinnedItems
+            refreshPinnedTilesFromPreferences()
+            rebuildTiles()
+            return
+        }
+
+        if let itemIndex = preferences.trailingItems.firstIndex(where: { Self.trailingTileID(for: $0) == tileID }),
+           preferences.trailingItems[itemIndex].kind == .widget {
+            guard preferences.trailingItems[itemIndex].widgetSettings != normalized else { return }
+            var trailingItems = preferences.trailingItems
+            trailingItems[itemIndex].widgetSettings = normalized
+            preferences.trailingItems = trailingItems
+            refreshTrailingTilesFromPreferences()
+            rebuildTiles()
+            return
+        }
+    }
+
+    func setWidgetSetting(tileID: String, key: String, value: WidgetSettingValue?) {
+        var current = widgetSettings(tileID: tileID) ?? [:]
+        if let value {
+            current[key] = value
+        } else {
+            current.removeValue(forKey: key)
+        }
+        setWidgetSettings(tileID: tileID, settings: current)
     }
 
     func setFolderDisplayMode(tileID: String, folderURL: URL, mode: FolderTileDisplayMode) {
@@ -2052,7 +2103,8 @@ final class TileStore: ObservableObject {
                 content: .widget(Self.makeWidgetTile(
                     kind: widgetKind,
                     ownerBundleIdentifier: ownerBundleIdentifier,
-                    span: item.widgetSpan ?? .three
+                    span: item.widgetSpan ?? .three,
+                    settings: item.widgetSettings ?? [:]
                 ))
             )
         case .smartStack:
@@ -2115,7 +2167,8 @@ final class TileStore: ObservableObject {
                 content: .widget(Self.makeWidgetTile(
                     kind: widgetKind,
                     ownerBundleIdentifier: ownerBundleIdentifier,
-                    span: item.widgetSpan ?? .three
+                    span: item.widgetSpan ?? .three,
+                    settings: item.widgetSettings ?? [:]
                 ))
             )
         case .smartStack:
@@ -2724,14 +2777,16 @@ final class TileStore: ObservableObject {
     private static func makeWidgetTile(
         kind: WidgetKind,
         ownerBundleIdentifier: String,
-        span: TileSpan
+        span: TileSpan,
+        settings: WidgetSettings = [:]
     ) -> WidgetTile {
         WidgetTile(
             identifier: "\(ownerBundleIdentifier):\(kind.rawValue)",
             title: kind.title,
             kind: kind,
             ownerBundleIdentifier: ownerBundleIdentifier,
-            span: span
+            span: span,
+            settings: settings
         )
     }
 

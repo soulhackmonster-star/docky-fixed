@@ -44,6 +44,17 @@ import SwiftUI
         isExpanded: Bool,
         isExpandedPreviewOpen: Bool
     ) -> NSView
+
+    /// Configured variant: receives the instance's settings as Cocoa primitives.
+    /// Optional; unimplemented plugins fall back to `makeView` above.
+    @objc optional func makeView(
+        cornerRadius: CGFloat,
+        renderedSpanValue: Int,
+        isWithinStack: Bool,
+        isExpanded: Bool,
+        isExpandedPreviewOpen: Bool,
+        configuration: [String: Any]
+    ) -> NSView
 }
 
 /// Metadata extracted from a loaded plugin, normalized into Docky's
@@ -61,6 +72,8 @@ struct ExternalWidgetMetadata: Equatable {
     let includesInSmartStack: Bool
     let author: String
     let version: String
+    /// From the bundle's settings.json manifest; empty means no settings.
+    let settingsSchema: [WidgetSettingsField]
 }
 
 /// Live registration backed by a loaded plugin instance. `view(for:)` is
@@ -70,7 +83,7 @@ final class ExternalWidgetRegistration {
     let bundleURL: URL
     private let plugin: DockyWidgetPlugin
 
-    init(plugin: DockyWidgetPlugin, bundleURL: URL) {
+    init(plugin: DockyWidgetPlugin, bundleURL: URL, settingsSchema: [WidgetSettingsField] = []) {
         self.bundleURL = bundleURL
         self.plugin = plugin
         self.metadata = ExternalWidgetMetadata(
@@ -87,7 +100,8 @@ final class ExternalWidgetRegistration {
             includesInPalette: plugin.includesInPalette,
             includesInSmartStack: plugin.includesInSmartStack,
             author: plugin.author ?? "Unknown",
-            version: plugin.version ?? "1.0"
+            version: plugin.version ?? "1.0",
+            settingsSchema: settingsSchema
         )
     }
 
@@ -96,9 +110,21 @@ final class ExternalWidgetRegistration {
         renderedSpan: TileSpan,
         isWithinStack: Bool,
         isExpanded: Bool,
-        isExpandedPreviewOpen: Bool
+        isExpandedPreviewOpen: Bool,
+        settings: WidgetSettings = [:]
     ) -> NSView {
-        plugin.makeView(
+        if let configured = plugin.makeView?(
+            cornerRadius: cornerRadius,
+            renderedSpanValue: renderedSpan.rawValue,
+            isWithinStack: isWithinStack,
+            isExpanded: isExpanded,
+            isExpandedPreviewOpen: isExpandedPreviewOpen,
+            configuration: settings.asCocoaConfiguration
+        ) {
+            return configured
+        }
+
+        return plugin.makeView(
             cornerRadius: cornerRadius,
             renderedSpanValue: renderedSpan.rawValue,
             isWithinStack: isWithinStack,

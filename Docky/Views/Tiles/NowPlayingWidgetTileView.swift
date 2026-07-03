@@ -249,7 +249,7 @@ struct NowPlayingWidgetTileView: View {
                 )
             }
 
-            if mediaPlayback.supportsLyrics(for: tile.ownerBundleIdentifier) {
+            if mediaPlayback.supportsLyrics(for: effectiveBundleIdentifier) {
                 expandedControlButton(
                     "quote.bubble.fill",
                     size: layout.controlButtonSize,
@@ -263,14 +263,14 @@ struct NowPlayingWidgetTileView: View {
 
     private func toggleLyricsOverlay() {
         if !isLyricsOverlayPresented {
-            mediaPlayback.requestLyrics(for: tile.ownerBundleIdentifier)
+            mediaPlayback.requestLyrics(for: effectiveBundleIdentifier)
         }
         isLyricsOverlayPresented.toggle()
     }
 
     @ViewBuilder
     private func lyricsOverlay(layout: ExpandedLayoutMetrics) -> some View {
-        let state = mediaPlayback.lyricsState(for: tile.ownerBundleIdentifier)
+        let state = mediaPlayback.lyricsState(for: effectiveBundleIdentifier)
 
         ZStack {
             Rectangle()
@@ -306,7 +306,7 @@ struct NowPlayingWidgetTileView: View {
             .padding(layout.contentPadding)
         }
         .onChange(of: trackChangeKey) { _ in
-            mediaPlayback.requestLyrics(for: tile.ownerBundleIdentifier)
+            mediaPlayback.requestLyrics(for: effectiveBundleIdentifier)
         }
     }
 
@@ -320,7 +320,7 @@ struct NowPlayingWidgetTileView: View {
                     layout: layout,
                     primaryColor: primaryForegroundColor,
                     secondaryColor: secondaryForegroundColor,
-                    bundleIdentifier: tile.ownerBundleIdentifier,
+                    bundleIdentifier: effectiveBundleIdentifier,
                     mediaPlayback: mediaPlayback
                 )
             } else {
@@ -352,7 +352,7 @@ struct NowPlayingWidgetTileView: View {
     }
 
     private var trackChangeKey: String {
-        "\(tile.ownerBundleIdentifier)|\(playbackState?.title ?? "")|\(playbackState?.artist ?? "")|\(playbackState?.album ?? "")"
+        "\(effectiveBundleIdentifier)|\(playbackState?.title ?? "")|\(playbackState?.artist ?? "")|\(playbackState?.album ?? "")"
     }
 
     private func expandedControlButton(_ systemName: String, size: CGFloat, iconSize: CGFloat, action: @escaping () -> Void) -> some View {
@@ -392,7 +392,7 @@ struct NowPlayingWidgetTileView: View {
     private func toggleFavorite() {
         let next = !(playbackState?.isFavorite ?? false)
         Task {
-            await mediaPlayback.setFavorite(next, for: tile.ownerBundleIdentifier)
+            await mediaPlayback.setFavorite(next, for: effectiveBundleIdentifier)
         }
     }
 
@@ -498,8 +498,17 @@ struct NowPlayingWidgetTileView: View {
         )
     }
 
+    /// Media app to track: the per-instance setting pins one, else fall back to the owner bundle id (existing generic now-playing behavior).
+    private var effectiveBundleIdentifier: String {
+        if let configured = tile.settings.string(NowPlayingWidgetSettings.appBundleIdentifierKey),
+           !configured.isEmpty {
+            return configured
+        }
+        return tile.ownerBundleIdentifier
+    }
+
     private var playbackState: MediaPlaybackState? {
-        mediaPlayback.state(for: tile.ownerBundleIdentifier)
+        mediaPlayback.state(for: effectiveBundleIdentifier)
     }
 
     private var prominentTintColor: NSColor {
@@ -530,7 +539,7 @@ struct NowPlayingWidgetTileView: View {
 
     private var ownerDisplayName: String {
         playbackState?.displayName
-            ?? (NSWorkspace.shared.urlForApplication(withBundleIdentifier: tile.ownerBundleIdentifier).map {
+            ?? (NSWorkspace.shared.urlForApplication(withBundleIdentifier: effectiveBundleIdentifier).map {
                 FileManager.default.displayName(atPath: $0.path)
             } ?? "")
     }
@@ -557,19 +566,19 @@ struct NowPlayingWidgetTileView: View {
 
     private func togglePlayPause() {
         Task {
-            await mediaPlayback.pressPlayPauseButton(for: tile.ownerBundleIdentifier)
+            await mediaPlayback.pressPlayPauseButton(for: effectiveBundleIdentifier)
         }
     }
 
     private func skipToNext() {
         Task {
-            await mediaPlayback.skipToNext(for: tile.ownerBundleIdentifier)
+            await mediaPlayback.skipToNext(for: effectiveBundleIdentifier)
         }
     }
 
     private func skipToPrevious() {
         Task {
-            await mediaPlayback.skipToPrevious(for: tile.ownerBundleIdentifier)
+            await mediaPlayback.skipToPrevious(for: effectiveBundleIdentifier)
         }
     }
 
