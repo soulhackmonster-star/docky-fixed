@@ -47,9 +47,12 @@ struct MinimizedWindowTileView: View {
                     .clipShape(.rect(cornerRadius: cornerRadius, style: .continuous))
                     .frame(width: cardSize.width - 4, height: cardSize.height - 4)
             } else {
-                Image(systemName: "rectangle.inset.filled")
-                    .font(.system(size: cardSize.height * 0.42, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.75))
+                Image(systemName: "macwindow")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .fontWeight(.medium)
+                    .symbolRenderingMode(.multicolor)
+                    .frame(width: cardSize.width * 0.8, height: cardSize.height * 0.8)
             }
         }
         .frame(width: cardSize.width, height: cardSize.height)
