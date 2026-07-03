@@ -15,6 +15,9 @@ custom icons, and scripted actions.
 [![Platform](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](https://getdocky.com)
 [![Universal](https://img.shields.io/badge/Apple%20Silicon%20%26%20Intel-Universal-orange)](https://getdocky.com)
 [![Website](https://img.shields.io/badge/getdocky.com-Download-brightgreen)](https://getdocky.com)
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/josejuanqm)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-ffdd00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/josejuanqm)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/vAwVNtPSgE)
 
 [**Download**](https://getdocky.com) &nbsp;·&nbsp; [**Website**](https://getdocky.com) &nbsp;·&nbsp; [**Build from source**](#building-from-source)
 
@@ -129,6 +132,20 @@ automatically on first build.
 
 - [External widget bundles](docs/external-widgets.md): the `.dockywidget` bundle
   contract and how to build community widgets.
+
+## Supporting Docky
+
+Docky is free and open source with no paid tier. If it earns a place in your
+Dock, you can help fund ongoing development:
+
+- **[GitHub Sponsors](https://github.com/sponsors/josejuanqm)**: one-time or
+  monthly, with tiers from ☕ Coffee to ❤️ Patron.
+- **[Buy Me a Coffee](https://buymeacoffee.com/josejuanqm)**: a quick one-off
+  thank-you.
+
+Sponsors also get a supporter role in the [Docky Discord](https://discord.gg/vAwVNtPSgE).
+Supporters are credited in [SUPPORTERS.md](SUPPORTERS.md); sponsoring teams can
+have their logo featured there. Every bit helps keep Docky maintained and free.
 
 ## Dependencies
 
