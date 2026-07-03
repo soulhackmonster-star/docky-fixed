@@ -174,10 +174,8 @@ final class WorkspaceService: ObservableObject {
     }
 
     private func cycleFrontmostAppWindows(_ visibleWindows: [AppWindow]) {
-        // appWindows() returns front-to-back order from AXWindows; raising index 1
-        // promotes the next window beneath the frontmost.
-        guard visibleWindows.count > 1 else { return }
-        _ = focus(window: visibleWindows[1])
+        guard visibleWindows.count > 1, let next = visibleWindows.last else { return }
+        _ = focus(window: next)
     }
 
     private func minimizeAllWindows(_ visibleWindows: [AppWindow]) {
