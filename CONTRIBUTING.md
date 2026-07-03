@@ -3,6 +3,12 @@
 Thanks for your interest in improving Docky. Contributions of all kinds are
 welcome: bug reports, fixes, features, and documentation.
 
+## Community
+
+Join the [Docky Discord](https://discord.gg/vAwVNtPSgE) to ask questions, share
+widgets, and follow development. [Sponsors](https://github.com/sponsors/josejuanqm)
+get a supporter role there.
+
 ## Reporting issues
 
 Open an issue at https://github.com/josejuanqm/docky/issues. Helpful reports
