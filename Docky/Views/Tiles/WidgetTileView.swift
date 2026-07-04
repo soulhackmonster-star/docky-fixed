@@ -98,7 +98,8 @@ struct WidgetTileView: View {
                 renderedSpan: renderedSpan,
                 isWithinStack: isWithinStack,
                 isExpanded: isExpanded,
-                isExpandedPreviewOpen: isExpandedPreviewOpen
+                isExpandedPreviewOpen: isExpandedPreviewOpen,
+                settings: tile.settings
             )
             .dockyGlass(.regular, in: .rect(cornerRadius: cornerRadius))
             .dockyGlassBorder(in: .rect(cornerRadius: cornerRadius))
@@ -119,26 +120,63 @@ private struct ExternalWidgetTileView: NSViewRepresentable {
     let isWithinStack: Bool
     let isExpanded: Bool
     let isExpandedPreviewOpen: Bool
+    let settings: WidgetSettings
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(settings: settings)
+    }
 
     func makeNSView(context: Context) -> NSView {
+        let host = ExternalWidgetHostView()
+        host.setChild(makePluginView())
+        return host
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard let host = nsView as? ExternalWidgetHostView else { return }
+        guard context.coordinator.settings != settings else { return }
+        context.coordinator.settings = settings
+        host.setChild(makePluginView())
+    }
+
+    private func makePluginView() -> NSView {
         guard let registration = ExternalWidgetRegistry.shared.registration(for: identifier) else {
             return MissingExternalWidgetPlaceholderView(identifier: identifier)
         }
-
-        let pluginView = registration.view(
+        return registration.view(
             cornerRadius: cornerRadius,
             renderedSpan: renderedSpan,
             isWithinStack: isWithinStack,
             isExpanded: isExpanded,
-            isExpandedPreviewOpen: isExpandedPreviewOpen
+            isExpandedPreviewOpen: isExpandedPreviewOpen,
+            settings: settings
         )
-        return pluginView
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        // Plugins draw their own contents; we don't push updates through
-        // a side channel. If a plugin needs to react to span/expansion
-        // changes it can observe its hosted SwiftUI state directly.
+    final class Coordinator {
+        var settings: WidgetSettings
+        init(settings: WidgetSettings) {
+            self.settings = settings
+        }
+    }
+}
+
+/// Hosts a single external-widget child pinned to its edges; swappable so a settings change can rebuild it.
+private final class ExternalWidgetHostView: NSView {
+    func setChild(_ child: NSView) {
+        subviews.forEach { $0.removeFromSuperview() }
+        child.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(child)
+        NSLayoutConstraint.activate([
+            child.leadingAnchor.constraint(equalTo: leadingAnchor),
+            child.trailingAnchor.constraint(equalTo: trailingAnchor),
+            child.topAnchor.constraint(equalTo: topAnchor),
+            child.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
     }
 }
 

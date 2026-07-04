@@ -47,6 +47,8 @@ struct PinnedTileItem: Codable, Equatable, Identifiable {
     let widgetOwnerBundleIdentifier: String?
     let widgetSpan: TileSpan?
     let hiddenWidgetOwnerBundleIdentifiers: [String]
+    /// Optional so pre-existing persisted items decode as nil (default behavior).
+    var widgetSettings: WidgetSettings? = nil
 
     nonisolated static func app(bundleIdentifier: String) -> Self {
         Self(
@@ -214,6 +216,8 @@ struct TrailingTileItem: Codable, Equatable, Identifiable {
     let widgetOwnerBundleIdentifier: String?
     let widgetSpan: TileSpan?
     let hiddenWidgetOwnerBundleIdentifiers: [String]
+    /// Optional so pre-existing persisted items decode as nil (default behavior).
+    var widgetSettings: WidgetSettings? = nil
 
     var effectiveFolderDisplayMode: FolderTileDisplayMode {
         folderDisplayMode ?? .contents
@@ -239,7 +243,8 @@ struct TrailingTileItem: Codable, Equatable, Identifiable {
         widgetKind: WidgetKind? = nil,
         widgetOwnerBundleIdentifier: String? = nil,
         widgetSpan: TileSpan? = nil,
-        hiddenWidgetOwnerBundleIdentifiers: [String] = []
+        hiddenWidgetOwnerBundleIdentifiers: [String] = [],
+        widgetSettings: WidgetSettings? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -253,6 +258,7 @@ struct TrailingTileItem: Codable, Equatable, Identifiable {
         self.widgetOwnerBundleIdentifier = widgetOwnerBundleIdentifier
         self.widgetSpan = widgetSpan
         self.hiddenWidgetOwnerBundleIdentifiers = hiddenWidgetOwnerBundleIdentifiers
+        self.widgetSettings = widgetSettings
     }
 
     nonisolated static func folder(

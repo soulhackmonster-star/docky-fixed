@@ -160,7 +160,13 @@ final class WeatherService: NSObject, ObservableObject {
 
             do {
                 let units = WeatherUnits.current
-                let snapshot = try await self.fetchSnapshot(for: location, units: units)
+                let coordinate = location.coordinate
+                let snapshot = try await Self.fetchSnapshot(
+                    latitude: coordinate.latitude,
+                    longitude: coordinate.longitude,
+                    locationName: nil,
+                    units: units
+                )
                 guard !Task.isCancelled else { return }
                 self.snapshot = snapshot
                 self.lastRefreshDate = Date()
@@ -177,13 +183,31 @@ final class WeatherService: NSObject, ObservableObject {
         }
     }
 
-    private func fetchSnapshot(for location: CLLocation, units: WeatherUnits) async throws -> WeatherSnapshot {
-        let coordinate = location.coordinate
+    /// Fetches for an arbitrary coordinate without the singleton's CLLocationManager.
+    /// A non-nil locationName skips reverse geocoding; units follow the locale.
+    static func fetchSnapshot(
+        forLatitude latitude: Double,
+        longitude: Double,
+        locationName: String?
+    ) async throws -> WeatherSnapshot {
+        try await fetchSnapshot(
+            latitude: latitude,
+            longitude: longitude,
+            locationName: locationName,
+            units: WeatherUnits.current
+        )
+    }
 
+    private static func fetchSnapshot(
+        latitude: Double,
+        longitude: Double,
+        locationName: String?,
+        units: WeatherUnits
+    ) async throws -> WeatherSnapshot {
         var components = URLComponents(string: "https://api.open-meteo.com/v1/forecast")
         components?.queryItems = [
-            URLQueryItem(name: "latitude", value: String(coordinate.latitude)),
-            URLQueryItem(name: "longitude", value: String(coordinate.longitude)),
+            URLQueryItem(name: "latitude", value: String(latitude)),
+            URLQueryItem(name: "longitude", value: String(longitude)),
             URLQueryItem(name: "current", value: "temperature_2m,weather_code,is_day"),
             URLQueryItem(name: "daily", value: "temperature_2m_max,temperature_2m_min,weather_code"),
             URLQueryItem(name: "temperature_unit", value: units.temperatureQueryValue),
@@ -200,11 +224,18 @@ final class WeatherService: NSObject, ObservableObject {
         let (data, _) = try await URLSession.shared.data(from: url)
         let response = try JSONDecoder().decode(OpenMeteoResponse.self, from: data)
         let current = response.current
-        let locationName = await reverseGeocodeLocationName(for: location)
-        let forecast = Self.makeForecastDays(from: response.daily)
+        let resolvedName: String
+        if let locationName, !locationName.isEmpty {
+            resolvedName = locationName
+        } else {
+            resolvedName = await reverseGeocodeLocationName(
+                for: CLLocation(latitude: latitude, longitude: longitude)
+            )
+        }
+        let forecast = makeForecastDays(from: response.daily)
 
         return WeatherSnapshot(
-            locationName: locationName,
+            locationName: resolvedName,
             temperature: current.temperature2m,
             highTemperature: response.daily.temperature2mMax.first,
             lowTemperature: response.daily.temperature2mMin.first,
@@ -253,7 +284,7 @@ final class WeatherService: NSObject, ObservableObject {
         refresh(force: true)
     }
 
-    private func reverseGeocodeLocationName(for location: CLLocation) async -> String {
+    private static func reverseGeocodeLocationName(for location: CLLocation) async -> String {
         if FeatureGate.shared.isAvailable(.modernReverseGeocoding), #available(macOS 26.0, *) {
             if let request = MKReverseGeocodingRequest(location: location),
                let mapItem = try? await request.mapItems.first {
@@ -456,6 +487,48 @@ struct WeatherSnapshot: Equatable {
         case (nil, nil):
             ""
         }
+    }
+}
+
+/// A snapshot's baseline scale follows the locale; per-widget overrides convert at display.
+enum WeatherTemperatureUnit {
+    case celsius
+    case fahrenheit
+}
+
+extension WeatherService {
+    /// The locale's temperature unit; the baseline a per-instance override converts from.
+    static var baselineTemperatureUnit: WeatherTemperatureUnit {
+        WeatherUnits.current.temperatureQueryValue == "fahrenheit" ? .fahrenheit : .celsius
+    }
+}
+
+extension WeatherSnapshot {
+    /// A copy with every temperature converted from baseline to target (identity when equal).
+    func converted(from baseline: WeatherTemperatureUnit, to target: WeatherTemperatureUnit) -> WeatherSnapshot {
+        guard baseline != target else { return self }
+        func convert(_ value: Double) -> Double {
+            switch baseline {
+            case .celsius: value * 9 / 5 + 32
+            case .fahrenheit: (value - 32) * 5 / 9
+            }
+        }
+        return WeatherSnapshot(
+            locationName: locationName,
+            temperature: convert(temperature),
+            highTemperature: highTemperature.map(convert),
+            lowTemperature: lowTemperature.map(convert),
+            symbolName: symbolName,
+            conditionDescription: conditionDescription,
+            forecast: forecast.map { day in
+                WeatherForecastDay(
+                    date: day.date,
+                    symbolName: day.symbolName,
+                    highTemperature: day.highTemperature.map(convert),
+                    lowTemperature: day.lowTemperature.map(convert)
+                )
+            }
+        )
     }
 }
 

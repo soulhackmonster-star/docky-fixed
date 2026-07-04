@@ -297,6 +297,8 @@ struct WidgetTile: Equatable {
     let kind: WidgetKind
     let ownerBundleIdentifier: String
     let span: TileSpan
+    /// Per-instance configuration; empty means default behavior.
+    var settings: WidgetSettings = [:]
 
     var effectiveSpan: TileSpan {
         kind.supportedSpans.contains(span) ? span : kind.supportedSpans.last ?? .one

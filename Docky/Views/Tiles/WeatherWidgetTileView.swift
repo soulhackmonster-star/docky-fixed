@@ -7,6 +7,7 @@ import AppKit
 import CoreLocation
 import SwiftUI
 
+/// Dispatches a placed weather widget to one of two data sources: the device-location singleton when unconfigured, or a coordinate-keyed model (no permission) when pinned to a fixed city.
 struct WeatherWidgetTileView: View {
     let tile: WidgetTile
     let cornerRadius: CGFloat
@@ -15,7 +16,134 @@ struct WeatherWidgetTileView: View {
     var isExpanded: Bool = false
     var isExpandedPreviewOpen: Bool = false
 
+    /// Display temperature scale: per-widget override resolved against the locale baseline.
+    private var temperatureUnit: WeatherTemperatureUnit {
+        WeatherWidgetSettingsKey.temperatureUnitSelection(from: tile.settings)
+            .resolved(baseline: WeatherService.baselineTemperatureUnit)
+    }
+
+    var body: some View {
+        if let location = WeatherWidgetSettingsKey.configuredLocation(from: tile.settings) {
+            ConfiguredWeatherWidgetTileView(
+                location: location,
+                temperatureUnit: temperatureUnit,
+                cornerRadius: cornerRadius,
+                renderedSpan: renderedSpan,
+                isWithinStack: isWithinStack,
+                isExpanded: isExpanded,
+                isExpandedPreviewOpen: isExpandedPreviewOpen
+            )
+        } else {
+            DeviceWeatherWidgetTileView(
+                temperatureUnit: temperatureUnit,
+                cornerRadius: cornerRadius,
+                renderedSpan: renderedSpan,
+                isWithinStack: isWithinStack,
+                isExpanded: isExpanded,
+                isExpandedPreviewOpen: isExpandedPreviewOpen
+            )
+        }
+    }
+}
+
+/// Unconfigured widget: device location via the shared singleton, incl. the lazy location-permission CTA.
+private struct DeviceWeatherWidgetTileView: View {
+    let temperatureUnit: WeatherTemperatureUnit
+    let cornerRadius: CGFloat
+    let renderedSpan: TileSpan
+    let isWithinStack: Bool
+    var isExpanded: Bool = false
+    var isExpandedPreviewOpen: Bool = false
+
     @ObservedObject private var weather = WeatherService.shared
+
+    var body: some View {
+        WeatherWidgetContentView(
+            snapshot: weather.snapshot?.converted(
+                from: WeatherService.baselineTemperatureUnit,
+                to: temperatureUnit
+            ),
+            isLoading: weather.isLoading,
+            lastErrorDescription: weather.lastErrorDescription,
+            permissionStatus: weather.permissionStatus,
+            authorizationStatus: weather.authorizationStatus,
+            cornerRadius: cornerRadius,
+            renderedSpan: renderedSpan,
+            isWithinStack: isWithinStack,
+            isExpanded: isExpanded,
+            isExpandedPreviewOpen: isExpandedPreviewOpen
+        )
+        .task {
+            weather.ensureFreshWeather()
+        }
+    }
+}
+
+/// Configured widget: a fixed city needs no permission, so content renders as `.granted` and never shows the location CTA.
+private struct ConfiguredWeatherWidgetTileView: View {
+    let temperatureUnit: WeatherTemperatureUnit
+    let cornerRadius: CGFloat
+    let renderedSpan: TileSpan
+    let isWithinStack: Bool
+    var isExpanded: Bool = false
+    var isExpandedPreviewOpen: Bool = false
+
+    @ObservedObject private var model: ConfiguredWeatherModel
+
+    init(
+        location: ConfiguredWeatherLocation,
+        temperatureUnit: WeatherTemperatureUnit,
+        cornerRadius: CGFloat,
+        renderedSpan: TileSpan,
+        isWithinStack: Bool,
+        isExpanded: Bool = false,
+        isExpandedPreviewOpen: Bool = false
+    ) {
+        self.temperatureUnit = temperatureUnit
+        self.cornerRadius = cornerRadius
+        self.renderedSpan = renderedSpan
+        self.isWithinStack = isWithinStack
+        self.isExpanded = isExpanded
+        self.isExpandedPreviewOpen = isExpandedPreviewOpen
+        _model = ObservedObject(wrappedValue: LocationWeatherStore.shared.model(for: location))
+    }
+
+    var body: some View {
+        WeatherWidgetContentView(
+            snapshot: model.snapshot?.converted(
+                from: WeatherService.baselineTemperatureUnit,
+                to: temperatureUnit
+            ),
+            isLoading: model.isLoading,
+            lastErrorDescription: model.lastErrorDescription,
+            // A fixed coordinate needs no permission, so weather always shows.
+            permissionStatus: .granted,
+            authorizationStatus: .authorizedAlways,
+            cornerRadius: cornerRadius,
+            renderedSpan: renderedSpan,
+            isWithinStack: isWithinStack,
+            isExpanded: isExpanded,
+            isExpandedPreviewOpen: isExpandedPreviewOpen
+        )
+        .task {
+            model.ensureFreshWeather()
+        }
+    }
+}
+
+/// Pure rendering driven by injected state so it serves both data sources.
+private struct WeatherWidgetContentView: View {
+    let snapshot: WeatherSnapshot?
+    let isLoading: Bool
+    let lastErrorDescription: String?
+    let permissionStatus: PermissionStatus
+    let authorizationStatus: CLAuthorizationStatus
+
+    let cornerRadius: CGFloat
+    let renderedSpan: TileSpan
+    let isWithinStack: Bool
+    var isExpanded: Bool = false
+    var isExpandedPreviewOpen: Bool = false
 
     var body: some View {
         #if DEBUG
@@ -59,16 +187,13 @@ struct WeatherWidgetTileView: View {
             .animation(.easeOut(duration: 0.12), value: isExpandedPreviewOpen)
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .task {
-            weather.ensureFreshWeather()
-        }
     }
 
     @ViewBuilder
     private func content(layout: LayoutMetrics) -> some View {
-        if weather.permissionStatus != .granted {
+        if permissionStatus != .granted {
             permissionCTA(isExpanded: false)
-        } else if let snapshot = weather.snapshot {
+        } else if let snapshot {
             switch renderedSpan {
             case .one:
                 oneUp(snapshot: snapshot, layout: layout)
@@ -84,9 +209,9 @@ struct WeatherWidgetTileView: View {
 
     @ViewBuilder
     private func expandedContent(layout: ExpandedLayoutMetrics) -> some View {
-        if weather.permissionStatus != .granted {
+        if permissionStatus != .granted {
             permissionCTA(isExpanded: true)
-        } else if let snapshot = weather.snapshot {
+        } else if let snapshot {
             expandedView(snapshot: snapshot, layout: layout)
         } else {
             expandedPlaceholder(layout: layout)
@@ -96,7 +221,7 @@ struct WeatherWidgetTileView: View {
     private func permissionCTA(isExpanded: Bool) -> some View {
         WidgetPermissionCTAView(
             permission: .location,
-            status: weather.permissionStatus,
+            status: permissionStatus,
             renderedSpan: renderedSpan,
             isExpanded: isExpanded,
             foreground: .white
@@ -202,7 +327,7 @@ struct WeatherWidgetTileView: View {
 
     private func expandedPlaceholder(layout: ExpandedLayoutMetrics) -> some View {
         VStack(spacing: layout.stackSpacing) {
-            if weather.isLoading {
+            if isLoading {
                 ProgressView()
                     .controlSize(.large)
                     .tint(.white.opacity(0.92))
@@ -217,7 +342,7 @@ struct WeatherWidgetTileView: View {
                 .foregroundStyle(.white.opacity(0.94))
                 .multilineTextAlignment(.center)
 
-            if let lastErrorDescription = weather.lastErrorDescription {
+            if let lastErrorDescription {
                 Text(lastErrorDescription)
                     .font(.system(size: layout.secondaryFontSize))
                     .foregroundStyle(.white.opacity(0.7))
@@ -301,7 +426,7 @@ struct WeatherWidgetTileView: View {
 
     private func placeholder(layout: LayoutMetrics) -> some View {
         VStack(spacing: layout.stackSpacing) {
-            if weather.isLoading {
+            if isLoading {
                 ProgressView()
                     .controlSize(.small)
                     .tint(.white.opacity(0.9))
@@ -317,7 +442,7 @@ struct WeatherWidgetTileView: View {
                 .foregroundStyle(.white.opacity(0.94))
                 .lineLimit(1)
 
-            if renderedSpan != .one, let lastErrorDescription = weather.lastErrorDescription {
+            if renderedSpan != .one, let lastErrorDescription {
                 Text(lastErrorDescription)
                     .font(.system(size: max(layout.secondaryFontSize - 1, 9)))
                     .foregroundStyle(.white.opacity(0.68))
@@ -380,16 +505,16 @@ struct WeatherWidgetTileView: View {
     }
 
     private var placeholderTitle: String {
-        switch weather.authorizationStatus {
+        switch authorizationStatus {
         case .denied, .restricted:
             "Enable Location"
         default:
-            weather.isLoading ? "Loading Weather" : "Weather"
+            isLoading ? "Loading Weather" : "Weather"
         }
     }
 
     private var placeholderSymbolName: String {
-        switch weather.authorizationStatus {
+        switch authorizationStatus {
         case .denied, .restricted:
             "location.slash.fill"
         default:
@@ -398,7 +523,7 @@ struct WeatherWidgetTileView: View {
     }
 
     private var backgroundColors: [Color] {
-        if let snapshot = weather.snapshot {
+        if let snapshot {
             switch snapshot.symbolName {
             case "sun.max.fill":
                 return [Color(red: 0.52, green: 0.78, blue: 0.98), Color(red: 0.18, green: 0.48, blue: 0.88)]

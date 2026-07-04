@@ -1,0 +1,147 @@
+//
+//  LocationWeatherStore.swift
+//  Docky
+//
+
+import Combine
+import Foundation
+
+/// Presence of `latitude` + `longitude` means "use this fixed location"; absence means "use device location".
+enum WeatherWidgetSettingsKey {
+    static let locationName = "weather.locationName"
+    static let latitude = "weather.latitude"
+    static let longitude = "weather.longitude"
+    /// Absent means follow the locale (see `WeatherTemperatureUnitSelection`).
+    static let temperatureUnit = "weather.temperatureUnit"
+
+    static func temperatureUnitSelection(from settings: WidgetSettings) -> WeatherTemperatureUnitSelection {
+        WeatherTemperatureUnitSelection(rawValue: settings.string(temperatureUnit) ?? "") ?? .automatic
+    }
+}
+
+enum WeatherTemperatureUnitSelection: String {
+    case automatic
+    case celsius
+    case fahrenheit
+
+    func resolved(baseline: WeatherTemperatureUnit) -> WeatherTemperatureUnit {
+        switch self {
+        case .automatic: baseline
+        case .celsius: .celsius
+        case .fahrenheit: .fahrenheit
+        }
+    }
+}
+
+struct ConfiguredWeatherLocation: Equatable {
+    let latitude: Double
+    let longitude: Double
+    let name: String?
+}
+
+extension WeatherWidgetSettingsKey {
+    static func configuredLocation(from settings: WidgetSettings) -> ConfiguredWeatherLocation? {
+        guard let lat = settings.double(WeatherWidgetSettingsKey.latitude),
+              let lon = settings.double(WeatherWidgetSettingsKey.longitude) else {
+            return nil
+        }
+        return ConfiguredWeatherLocation(
+            latitude: lat,
+            longitude: lon,
+            name: settings.string(WeatherWidgetSettingsKey.locationName)
+        )
+    }
+}
+
+/// Deliberately not `@MainActor` isolated to match `WeatherService`'s publish-from-Task pattern; only handed out and observed on the main thread.
+final class ConfiguredWeatherModel: ObservableObject {
+    let latitude: Double
+    let longitude: Double
+    let locationName: String?
+
+    @Published private(set) var snapshot: WeatherSnapshot?
+    @Published private(set) var isLoading = false
+    @Published private(set) var lastErrorDescription: String?
+
+    private var lastRefreshDate: Date?
+    private var pendingRefreshTask: Task<Void, Never>?
+
+    init(latitude: Double, longitude: Double, locationName: String?) {
+        self.latitude = latitude
+        self.longitude = longitude
+        self.locationName = locationName
+    }
+
+    /// Fetches only if the cached snapshot is missing or stale (15 min).
+    func ensureFreshWeather() {
+        refresh(force: false)
+    }
+
+    func refresh(force: Bool) {
+        guard !isLoading else {
+            return
+        }
+
+        if !force,
+           let lastRefreshDate,
+           Date().timeIntervalSince(lastRefreshDate) < 900,
+           snapshot != nil {
+            return
+        }
+
+        isLoading = true
+        lastErrorDescription = nil
+
+        pendingRefreshTask?.cancel()
+        pendingRefreshTask = Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let snapshot = try await WeatherService.fetchSnapshot(
+                    forLatitude: self.latitude,
+                    longitude: self.longitude,
+                    locationName: self.locationName
+                )
+                guard !Task.isCancelled else { return }
+                self.snapshot = snapshot
+                self.lastRefreshDate = Date()
+                self.lastErrorDescription = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                // Keep any previously loaded snapshot visible on a transient failure.
+                self.lastErrorDescription = "Couldn’t load weather."
+            }
+
+            self.isLoading = false
+        }
+    }
+}
+
+/// Keyed by rounded coordinate so two widgets pinned to the same city share a single fetch.
+final class LocationWeatherStore {
+    static let shared = LocationWeatherStore()
+
+    private var models: [String: ConfiguredWeatherModel] = [:]
+
+    private init() {}
+
+    func model(for location: ConfiguredWeatherLocation) -> ConfiguredWeatherModel {
+        let key = Self.cacheKey(latitude: location.latitude, longitude: location.longitude)
+        if let existing = models[key] {
+            return existing
+        }
+        let model = ConfiguredWeatherModel(
+            latitude: location.latitude,
+            longitude: location.longitude,
+            locationName: location.name
+        )
+        models[key] = model
+        return model
+    }
+
+    /// Rounded to two decimals (~1 km) so effectively-identical city picks coalesce onto one model.
+    private static func cacheKey(latitude: Double, longitude: Double) -> String {
+        String(format: "%.2f,%.2f", latitude, longitude)
+    }
+}

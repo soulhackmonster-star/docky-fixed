@@ -20,6 +20,27 @@ struct CalendarWidgetTileView: View {
         tile.kind == .calendarDate
     }
 
+    /// Configured calendar IDs; absent or empty means "show all calendars".
+    private var configuredCalendarIDs: [String] {
+        tile.settings.stringList("calendar.calendarIDs") ?? []
+    }
+
+    /// Upcoming events filtered to the configured calendars; full list when none set.
+    private var displayedEvents: [CalendarEventSnapshot] {
+        let ids = configuredCalendarIDs
+        guard !ids.isEmpty else { return calendar.upcomingEvents }
+        let allowed = Set(ids)
+        return calendar.upcomingEvents.filter { allowed.contains($0.calendarIdentifier) }
+    }
+
+    /// Next event from the filtered set, mirroring the service's selection (first non-all-day, else first).
+    private var displayedNextEvent: CalendarEventSnapshot? {
+        let ids = configuredCalendarIDs
+        guard !ids.isEmpty else { return calendar.nextEvent }
+        let events = displayedEvents
+        return events.first(where: { !$0.isAllDay }) ?? events.first
+    }
+
     var body: some View {
         #if DEBUG
         let _ = Self._printChanges()
@@ -71,7 +92,7 @@ struct CalendarWidgetTileView: View {
             dateOneUp(layout: layout, now: now)
         } else if calendar.permissionStatus != .granted {
             permissionCTA(isExpanded: false)
-        } else if let event = calendar.nextEvent {
+        } else if let event = displayedNextEvent {
             switch renderedSpan {
             case .one:
                 oneUp(event: event, layout: layout, now: now)
@@ -192,7 +213,7 @@ struct CalendarWidgetTileView: View {
     private func expandedContent(layout: ExpandedLayoutMetrics, now: Date) -> some View {
         if calendar.permissionStatus != .granted {
             permissionCTA(isExpanded: true)
-        } else if calendar.upcomingEvents.isEmpty {
+        } else if displayedEvents.isEmpty {
             expandedEmpty(layout: layout, now: now)
         } else {
             expandedAgenda(layout: layout, now: now)
@@ -251,7 +272,7 @@ struct CalendarWidgetTileView: View {
         var orderedDayKeys: [Date] = []
         var grouped: [Date: [CalendarEventSnapshot]] = [:]
 
-        for event in calendar.upcomingEvents {
+        for event in displayedEvents {
             let dayKey = calendarRef.startOfDay(for: event.startDate)
             if grouped[dayKey] == nil {
                 orderedDayKeys.append(dayKey)

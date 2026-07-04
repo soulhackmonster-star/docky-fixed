@@ -40,6 +40,21 @@ final class CalendarService: ObservableObject {
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
     }
 
+    /// Event calendars for the per-widget picker; empty without read access.
+    func availableCalendars() -> [CalendarChoice] {
+        guard permissionStatus == .granted else { return [] }
+
+        return eventStore.calendars(for: .event)
+            .map { calendar in
+                CalendarChoice(
+                    identifier: calendar.calendarIdentifier,
+                    title: calendar.title,
+                    color: NSColor(cgColor: calendar.cgColor) ?? .white
+                )
+            }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
     /// Docky's tri-state view of calendar access. `.writeOnly` counts as
     /// not-granted because the widget needs read access to show events.
     var permissionStatus: PermissionStatus {
@@ -154,7 +169,8 @@ final class CalendarService: ObservableObject {
         let nextEvent = upcomingEvents.first(where: { !$0.isAllDay }) ?? upcomingEvents.first
 
         self.nextEvent = nextEvent.map(CalendarEventSnapshot.init(event:))
-        self.upcomingEvents = upcomingEvents.prefix(8).map(CalendarEventSnapshot.init(event:))
+        // Deeper window so per-widget calendar filtering still has events after exclusions.
+        self.upcomingEvents = upcomingEvents.prefix(20).map(CalendarEventSnapshot.init(event:))
         self.lastRefreshDate = now
         self.isLoading = false
         self.lastErrorDescription = nil
@@ -243,8 +259,17 @@ final class CalendarService: ObservableObject {
     #endif
 }
 
+struct CalendarChoice: Identifiable, Equatable {
+    let identifier: String
+    let title: String
+    let color: NSColor
+
+    var id: String { identifier }
+}
+
 struct CalendarEventSnapshot: Equatable {
     let eventIdentifier: String
+    let calendarIdentifier: String
     let title: String
     let startDate: Date
     let endDate: Date
@@ -256,6 +281,7 @@ struct CalendarEventSnapshot: Equatable {
 
     nonisolated init(event: EKEvent) {
         eventIdentifier = event.eventIdentifier ?? event.calendarItemIdentifier
+        calendarIdentifier = event.calendar.calendarIdentifier
         let trimmedTitle = event.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         title = trimmedTitle.isEmpty ? "Untitled Event" : trimmedTitle
         startDate = event.startDate
@@ -270,6 +296,7 @@ struct CalendarEventSnapshot: Equatable {
     #if DEBUG
     init(
         eventIdentifier: String = UUID().uuidString,
+        calendarIdentifier: String = UUID().uuidString,
         title: String,
         startDate: Date,
         endDate: Date,
@@ -280,6 +307,7 @@ struct CalendarEventSnapshot: Equatable {
         quickJoinURL: URL?
     ) {
         self.eventIdentifier = eventIdentifier
+        self.calendarIdentifier = calendarIdentifier
         self.title = title
         self.startDate = startDate
         self.endDate = endDate

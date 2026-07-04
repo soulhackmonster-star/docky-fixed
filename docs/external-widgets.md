@@ -50,6 +50,7 @@ import SwiftUI
 
     @objc optional var author: String { get }   // shown in Widget Store, defaults to "Unknown"
     @objc optional var version: String { get }  // shown in Widget Store, defaults to "1.0"
+    @objc optional func makeSettingsView() -> NSView
 
     func makeView(
         cornerRadius: CGFloat,
@@ -62,6 +63,14 @@ import SwiftUI
 ```
 
 `makeView` typically returns `NSHostingView(rootView: ...)` wrapping a SwiftUI view, but any `NSView` works.
+
+### Optional per-widget settings UI
+
+If your widget needs its own controls, implement `makeSettingsView()`. Docky surfaces a gear button for installed widgets that provide it and opens the returned `NSView` in a dedicated settings window.
+
+- Return a fresh view each time `makeSettingsView()` is called. Docky may reopen the window after a previous one was closed, and reusing the same `NSView` instance can run into AppKit reparenting issues.
+- Persist plugin-specific settings inside the widget bundle itself (for example with `UserDefaults`). Docky does not serialize or validate custom widget settings.
+- Keep the view compact and self-contained; Docky sizes the window from the view's fitting size and allows the user to resize it afterward.
 
 A minimal plugin:
 
@@ -85,6 +94,10 @@ public final class MyWidget: NSObject, DockyWidgetPlugin {
     public var includesInPalette: Bool { true }
     public var includesInSmartStack: Bool { false }
 
+    public func makeSettingsView() -> NSView {
+        NSHostingView(rootView: Text("Settings go here").padding())
+    }
+
     public func makeView(
         cornerRadius: CGFloat,
         renderedSpanValue: Int,
@@ -96,6 +109,8 @@ public final class MyWidget: NSObject, DockyWidgetPlugin {
     }
 }
 ```
+
+This repo includes a worked example under `ExternalWidgets/IndividualSettingsWidget/`, plus `scripts/build_individual_settings_widget.sh` to compile it into a real `.dockywidget` bundle for local testing.
 
 ## Build settings
 
