@@ -195,6 +195,7 @@ final class MainWindow: NSPanel {
     private var hideWorkItem: DispatchWorkItem?
     private var fullscreenRecheckWorkItem: DispatchWorkItem?
     private var fullscreenRevealWorkItem: DispatchWorkItem?
+    private var screenParamChangeDebounce: DispatchWorkItem?
     private var globalPointerMonitor: Any?
     private var localPointerMonitor: Any?
     private var globalDragRevealMonitor: Any?
@@ -307,6 +308,7 @@ final class MainWindow: NSPanel {
     deinit {
         fullscreenRecheckWorkItem?.cancel()
         fullscreenRevealWorkItem?.cancel()
+        screenParamChangeDebounce?.cancel()
         if let globalPointerMonitor {
             NSEvent.removeMonitor(globalPointerMonitor)
         }
@@ -418,8 +420,13 @@ final class MainWindow: NSPanel {
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.applyCurrentFrame(animated: false)
-                self?.updateFullscreenStateAndApply(animated: false)
+                self?.screenParamChangeDebounce?.cancel()
+                let work = DispatchWorkItem { [weak self] in
+                    self?.applyCurrentFrame(animated: false)
+                    self?.updateFullscreenStateAndApply(animated: false)
+                }
+                self?.screenParamChangeDebounce = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
             }
             .store(in: &cancellables)
 

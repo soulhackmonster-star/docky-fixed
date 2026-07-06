@@ -43,6 +43,7 @@ final class SystemDockVisibilityService {
     private let defaults = UserDefaults.standard
     private let sessionID = UUID().uuidString.lowercased()
     private var isWatchdogLaunchPendingOrRunning = false
+    private var dockLaunchObserver: NSObjectProtocol?
 
     private init() {}
 
@@ -73,8 +74,8 @@ final class SystemDockVisibilityService {
     func hide() {
         let snapshot = defaults.dictionary(forKey: Self.snapshotKey) ?? captureSnapshot()
         writeActiveState(snapshot: snapshot)
-        startWatchdogIfNeeded()
         applyHiddenValues()
+        startEnforcement()
         restartDock()
     }
 
@@ -85,6 +86,7 @@ final class SystemDockVisibilityService {
     }
 
     func restore() {
+        stopEnforcement()
         restore(using: defaults.dictionary(forKey: Self.snapshotKey))
     }
 
@@ -116,11 +118,22 @@ final class SystemDockVisibilityService {
         return snapshot
     }
 
+    @discardableResult
+    private func defaultsWrite(_ args: [String]) -> Bool {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+        p.arguments = args
+        try? p.run()
+        p.waitUntilExit()
+        return p.terminationStatus == 0
+    }
+
     private func applyHiddenValues() {
-        for (key, value) in Self.hiddenValues {
-            CFPreferencesSetAppValue(key as CFString, value, Self.dockDomain)
-        }
-        CFPreferencesAppSynchronize(Self.dockDomain)
+        defaultsWrite(["write", "com.apple.dock", "autohide", "-bool", "true"])
+        defaultsWrite(["write", "com.apple.dock", "autohide-delay", "-float", "1000.0"])
+        defaultsWrite(["write", "com.apple.dock", "autohide-time-modifier", "-float", "0.0"])
+        defaultsWrite(["write", "com.apple.dock", "no-bouncing", "-bool", "true"])
+        defaultsWrite(["write", "com.apple.dock", "launchanim", "-bool", "false"])
     }
 
     private func applySnapshot(_ snapshot: [String: Any]) {
@@ -212,6 +225,31 @@ final class SystemDockVisibilityService {
             sessionID: plist["sessionID"] as? String ?? "",
             snapshot: snapshot
         )
+    }
+
+    private func startEnforcement() {
+        stopEnforcement()
+        dockLaunchObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didLaunchApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.bundleIdentifier == "com.apple.dock",
+                  self.readVisibilityState()?.active == true
+            else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                self.applyHiddenValues()
+            }
+        }
+    }
+
+    private func stopEnforcement() {
+        if let obs = dockLaunchObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(obs)
+            dockLaunchObserver = nil
+        }
     }
 
     private func startWatchdogIfNeeded() {
